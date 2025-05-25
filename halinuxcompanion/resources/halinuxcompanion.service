@@ -1,11 +1,11 @@
 [Unit]
 Description=Home Assistant Linux Companion
-Documentation=https://github.com/muniter/halinuxcompanion
-After=networking.target
+Documentation=https://github.com/benleb/halinuxcompanion
+After=network-online.target
 
 [Service]
-WorkingDirectory=~/.config/halinuxcompanion
-ExecStart=~/.config/halinuxcompanion/.venv/bin/python -m halinuxcompanion
+Type=simple
+ExecStart=/usr/bin/env halinuxcompanion
 Restart=always
 RestartSec=30
 

@@ -3,6 +3,7 @@ import json
 import platform
 import uuid
 import logging
+import secrets
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
@@ -94,6 +95,7 @@ class Companion:
     url_program: str = ""
     commands: Dict[str, CommandConfig] = {}
     sensors: Dict[str, bool] = {}
+    sensor_names: Dict[str, str] = {}
 
     def __init__(self, config: dict):
         # Load only allowed values

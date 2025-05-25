@@ -8,35 +8,89 @@ Application to run on Linux desktop computer to provide sensor data to Home Assi
 
 Python 3.10+ and the related `dev` dependencies (usually `python3-dev` or `python3-devel` on your package manager)
 
-### Instructions
+### Home Assistant Token Usage
+
+The long-lived access token is required for:
+- **Initial device registration** with Home Assistant (one-time)
+- **Sending notification events** (ongoing, only if notifications are enabled)
+
+After initial registration, most operations (sensor updates) use webhook authentication and don't require the token. Registration data is saved to `~/.local/state/halinuxcompanion/registration.json`.
+
+### Installation
 
 1. [Get a long-lived access token from your Home Assistant user](https://www.home-assistant.io/docs/authentication/#your-account-profile)
-1. Clone this repository.
-1. Create a Python virtual environment and install all the requirements:
+1. Install the package:
 
    ```shell
+   pip install git+https://github.com/benleb/halinuxcompanion.git
+   ```
+   
+   Or for development:
+   ```shell
+   git clone https://github.com/benleb/halinuxcompanion.git
    cd halinuxcompanion
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
-1. Copy `config.example.json` to `~/.config/halinuxcompanion/config.json` (or `$XDG_CONFIG_HOME/halinuxcompanion/config.json` if set).
+1. Create configuration directory and copy example config:
    
    ```shell
    mkdir -p ~/.config/halinuxcompanion
-   cp config.example.json ~/.config/halinuxcompanion/config.json
+   # For TOML format (recommended):
+   curl -o ~/.config/halinuxcompanion/config.toml https://raw.githubusercontent.com/benleb/halinuxcompanion/master/config.example.toml
+   # Or for JSON format:
+   curl -o ~/.config/halinuxcompanion/config.json https://raw.githubusercontent.com/benleb/halinuxcompanion/master/config.example.json
    ```
    
-1. Modify `~/.config/halinuxcompanion/config.json` to match your setup and desired options.
-1. Run the application, either from:
-   1. the virtual environment directly: `python -m halinuxcompanion`. In this case, you'll need to run it again when you restart.
-   1. or setting up a systemd service (you may need `sudo` for most of the commands below):
-      1. Copy the sample unit file from `halinuxcompanion/resources/halinuxcompanion.service` to `/etc/systemd/system`
-      1. Modify it to match your setup - mainly, the installation paths at `WorkingDirectory` and `ExecStart`
-      1. Start it with `systemctl start halinuxcompanion`
-      1. You can check if it went well with `systemctl status halinuxcompanion`. If it errored, you can check logs with `journalctl -u halinuxcompanion`
-      1. If all went well, you can enable it permanently with `systemctl enable halinuxcompanion`
+1. Edit the configuration file to match your setup and desired options.
+1. Run the application:
+   
+   ```shell
+   halinuxcompanion
+   ```
+   
+   Or with a custom config location:
+   ```shell
+   halinuxcompanion --config /path/to/config.toml
+   ```
+### Systemd Service Setup
+
+To run halinuxcompanion as a systemd service:
+
+1. Create a systemd user service file:
+   
+   ```shell
+   mkdir -p ~/.config/systemd/user/
+   cat > ~/.config/systemd/user/halinuxcompanion.service << EOF
+   [Unit]
+   Description=Home Assistant Linux Companion
+   Documentation=https://github.com/benleb/halinuxcompanion
+   After=network-online.target
+   
+   [Service]
+   Type=simple
+   ExecStart=$(which halinuxcompanion)
+   Restart=always
+   RestartSec=30
+   
+   [Install]
+   WantedBy=default.target
+   EOF
+   ```
+
+2. Enable and start the service:
+   
+   ```shell
+   systemctl --user daemon-reload
+   systemctl --user enable --now halinuxcompanion
+   ```
+
+3. Check status and logs:
+   
+   ```shell
+   systemctl --user status halinuxcompanion
+   journalctl --user -u halinuxcompanion -f
+   ```
 
 Now in your Home Assistant you will see a new device in the **"mobile_app"** integration, and there will be a new service to notify your Linux desktop. Notification actions work and the expected events will be fired in Home Assistant.
 
