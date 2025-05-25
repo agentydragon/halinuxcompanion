@@ -99,6 +99,10 @@ async def main():
     await bus.init()
     # Register sensors
     sensors = list(filter(lambda x: x.config_name in companion.sensors, Sensor.instances))
+    # Apply custom sensor names from config
+    for sensor in sensors:
+        if sensor.config_name in companion.sensor_names:
+            sensor.name = companion.sensor_names[sensor.config_name]
     sensor_manager = SensorManager(api, sensors, bus)
 
     # If the device can't be registered exit immidiately, nothing to do.

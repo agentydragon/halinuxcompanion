@@ -138,16 +138,8 @@ class Companion:
             and config.services.notifications
             and config.services.notifications.enabled
         ):
-            # Let's generate the push token derived from the device_id
-            import hashlib
-            push_token = f"push_token_{self.device_id}_halinuxcompanion"
-            push_token = hashlib.sha256(push_token.encode()).hexdigest()
-
             self.notifier = True
-            self.app_data = {
-                "push_token": push_token,  # TODO: Random generation, and store it in state
-                "push_url": f"http://{self.computer_ip}:{self.computer_port}/notify",
-            }
+            # Push token will be generated/loaded in load_or_register
             self.url_program = config.services.notifications.url_program
             self.commands = config.services.notifications.commands
 
@@ -211,6 +203,26 @@ class Companion:
         Load registration data from disk or register the companion APP
         """
         registration_data = self.load_registration_data()
+        
+        # Load or generate push token if notifications are enabled
+        if self.notifier:
+            state_data = self._load_state_data()
+            if state_data and "push_token" in state_data:
+                # Use existing push token
+                push_token = state_data["push_token"]
+                logger.info("Loaded existing push token")
+            else:
+                # Generate new secure push token
+                push_token = secrets.token_urlsafe(32)
+                logger.info("Generated new secure push token")
+                # Save it for future use
+                self._save_state_data({"push_token": push_token})
+            
+            self.app_data = {
+                "push_token": push_token,
+                "push_url": f"http://{self.computer_ip}:{self.computer_port}/notify",
+            }
+        
         if registration_data:
             logger.info("Loaded existing registration data from disk %s", registration_data)
             if await self.check_registration(api, registration_data):
@@ -245,3 +257,28 @@ class Companion:
             with open(registration_path, "r") as f:
                 return json.load(f)
         return None
+    
+    def _get_state_path(self) -> Path:
+        """Get the state file path."""
+        return self._get_state_dir() / "state.json"
+    
+    def _load_state_data(self) -> Optional[dict]:
+        """Load state data including push token."""
+        state_path = self._get_state_path()
+        
+        if state_path.exists():
+            with open(state_path, "r") as f:
+                return json.load(f)
+        return None
+    
+    def _save_state_data(self, data: dict):
+        """Save state data including push token."""
+        state_path = self._get_state_path()
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Load existing data and update it
+        existing_data = self._load_state_data() or {}
+        existing_data.update(data)
+        
+        with open(state_path, "w") as f:
+            f.write(json.dumps(existing_data))
