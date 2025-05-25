@@ -3,6 +3,7 @@ import json
 import platform
 import uuid
 import logging
+from pathlib import Path
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -214,26 +215,28 @@ class Companion:
                 logger.info("Device registration data is invalid, re-registering")
         return await self.register(api)
 
+    def _get_state_dir(self) -> Path:
+        """Get the state directory path using XDG_STATE_HOME."""
+        state_home = Path(os.getenv("XDG_STATE_HOME", Path.home() / ".local" / "state"))
+        app_state_dir = state_home / "halinuxcompanion"
+        return app_state_dir
+
+    def _get_registration_path(self) -> Path:
+        """Get the registration file path."""
+        return self._get_state_dir() / "registration.json"
+
     def save_registration_data(self, data: dict):
         # store data in $XDG_STATE_HOME/halinuxcompanion/registration.json
-        state_home = os.getenv("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
-        if not os.path.exists(state_home):
-            os.makedirs(state_home)
-
-        app_state_dir = os.path.join(state_home, "halinuxcompanion")
-        if not os.path.exists(app_state_dir):
-            os.makedirs(app_state_dir)
-
-        registration_path = os.path.join(app_state_dir, "registration.json")
+        registration_path = self._get_registration_path()
+        registration_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(registration_path, "w") as f:
             f.write(json.dumps(data))
 
     def load_registration_data(self) -> Optional[dict]:
-        state_home = os.getenv("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
-        registration_path = os.path.join(state_home, "halinuxcompanion", "registration.json")
+        registration_path = self._get_registration_path()
 
-        if os.path.exists(registration_path):
+        if registration_path.exists():
             with open(registration_path, "r") as f:
                 return json.load(f)
         return None

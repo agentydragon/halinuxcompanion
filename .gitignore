@@ -6,3 +6,4 @@ config.json
 ha_config/
 *.xml
 .coverage
+halinuxcompanion.egg-info

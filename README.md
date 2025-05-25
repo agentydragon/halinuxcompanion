@@ -21,10 +21,16 @@ Python 3.10+ and the related `dev` dependencies (usually `python3-dev` or `pytho
    pip install -r requirements.txt
    ```
 
-1. Copy `config.example.json` to `config.json`.
-1. Modify `config.json` to match your setup and desired options.
+1. Copy `config.example.json` to `~/.config/halinuxcompanion/config.json` (or `$XDG_CONFIG_HOME/halinuxcompanion/config.json` if set).
+   
+   ```shell
+   mkdir -p ~/.config/halinuxcompanion
+   cp config.example.json ~/.config/halinuxcompanion/config.json
+   ```
+   
+1. Modify `~/.config/halinuxcompanion/config.json` to match your setup and desired options.
 1. Run the application, either from:
-   1. the virtual environment directly: `python -m halinuxcompanion --config config.json`. In this case, you'll need to run it again when you restart.
+   1. the virtual environment directly: `python -m halinuxcompanion`. In this case, you'll need to run it again when you restart.
    1. or setting up a systemd service (you may need `sudo` for most of the commands below):
       1. Copy the sample unit file from `halinuxcompanion/resources/halinuxcompanion.service` to `/etc/systemd/system`
       1. Modify it to match your setup - mainly, the installation paths at `WorkingDirectory` and `ExecStart`

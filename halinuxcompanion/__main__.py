@@ -9,18 +9,47 @@ import asyncio
 import json
 import logging
 import argparse
+import os
+from pathlib import Path
+import toml
 # set logging level using and environment variable
 logger = logging.getLogger("halinuxcompanion")
 
 
-def load_config(file="config.json") -> dict:
+def load_config(file: Path) -> dict:
     logger.info("Reading configuration file %s", file)
     try:
         with open(file, "r") as f:
-            return json.load(f)
+            if file.suffix.lower() == ".json":
+                return json.load(f)
+            elif file.suffix.lower() in [".toml", ".tml"]:
+                return toml.load(f)
+            else:
+                # Try to detect format from content
+                content = f.read()
+                f.seek(0)
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    return toml.loads(content)
     except FileNotFoundError:
         logger.critical("Config file not found %s, exiting now", file)
         exit(1)
+    except (json.JSONDecodeError, toml.TomlDecodeError) as e:
+        logger.critical("Config file parse error in %s: %s", file, e)
+        exit(1)
+
+
+def get_default_config_path() -> Path:
+    """Get the default config path using XDG_CONFIG_HOME."""
+    config_home = Path(os.getenv("XDG_CONFIG_HOME", Path.home() / ".config"))
+    config_dir = config_home / "halinuxcompanion"
+    # Try .toml first, fall back to .json if it exists
+    toml_path = config_dir / "config.toml"
+    json_path = config_dir / "config.json"
+    if json_path.exists() and not toml_path.exists():
+        return json_path
+    return toml_path
 
 
 def commandline() -> argparse.Namespace:
@@ -29,7 +58,8 @@ def commandline() -> argparse.Namespace:
         "-c",
         "--config",
         help="Path to config file",
-        default="config.json",
+        default=get_default_config_path(),
+        type=Path,
     )
     parser.add_argument(
         "-l",
@@ -100,5 +130,11 @@ async def main():
         await asyncio.sleep(interval)
 
 
-loop = asyncio.new_event_loop()
-loop.run_until_complete(main())
+def run():
+    """Entry point for the console script."""
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(main())
+
+
+if __name__ == "__main__":
+    run()

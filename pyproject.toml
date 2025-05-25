@@ -1,0 +1,99 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "halinuxcompanion"
+version = "0.1.0"
+description = "Linux desktop companion for Home Assistant - provides sensor data and notifications"
+readme = "README.md"
+authors = [
+    {name = "Home Assistant Linux Companion Contributors"},
+]
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+keywords = ["home-assistant", "linux", "desktop", "sensors", "notifications"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "aiohttp>=3.9.5",
+    "psutil>=5.8.0",
+    "dbus-next>=0.2.3",
+    "pydantic>=2.10.4",
+    "greenlet>=3.1.1",
+    "toml>=0.10.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "coverage>=7.3.2",
+    "tox>=4.11.3",
+    "black",
+]
+
+[project.scripts]
+halinuxcompanion = "halinuxcompanion.__main__:run"
+
+[project.urls]
+Homepage = "https://github.com/benleb/halinuxcompanion"
+Repository = "https://github.com/benleb/halinuxcompanion"
+Issues = "https://github.com/benleb/halinuxcompanion/issues"
+
+[tool.setuptools.packages.find]
+include = ["halinuxcompanion*"]
+
+[tool.setuptools.package-data]
+halinuxcompanion = ["resources/*"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "halinuxcompanion"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["halinuxcompanion"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = py310,py311,py312,py313
+skipsdist = True
+
+[testenv]
+deps =
+    -r requirements.txt
+    pytest
+    pytest-asyncio
+    pytest-cov
+commands = pytest --cov=halinuxcompanion {posargs}
+"""

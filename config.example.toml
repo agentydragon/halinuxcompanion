@@ -1,0 +1,69 @@
+ha_url = "http://homeassistant.local:8123/"
+ha_token = "mysuperlongtoken"
+device_id = "computername"
+device_name = "whatever you want can be left empty"
+manufacturer = "whatever you want can be left empty"
+model = "Computer"
+computer_ip = "192.168.1.15"
+computer_port = 8400
+refresh_interval = 15
+loglevel = "INFO"
+
+[sensors]
+[sensors.cpu]
+enabled = true
+name = "CPU"
+
+[sensors.memory]
+enabled = true
+name = "Memory Load"
+
+[sensors.uptime]
+enabled = true
+name = "Uptime"
+
+[sensors.status]
+enabled = true
+name = "Status"
+
+[sensors.battery_level]
+enabled = true
+name = "Battery Level"
+
+[sensors.battery_state]
+enabled = true
+name = "Battery State"
+
+[sensors.camera_state]
+enabled = true
+name = "Camera State"
+
+[services]
+[services.notifications]
+enabled = true
+url_program = "xdg-open"
+
+[services.notifications.commands]
+[services.notifications.commands.command_suspend]
+name = "Suspend"
+command = ["systemctl", "suspend"]
+
+[services.notifications.commands.command_poweroff]
+name = "Power off"
+command = ["systemctl", "poweroff"]
+
+[services.notifications.commands.command_reboot]
+name = "Reboot"
+command = ["systemctl", "reboot"]
+
+[services.notifications.commands.command_hibernate]
+name = "Hibernate"
+command = ["systemctl", "hibernate"]
+
+[services.notifications.commands.command_open_ha]
+name = "Open Home Assistant"
+command = ["xdg-open", "http://homeassistant.local:8123/"]
+
+[services.notifications.commands.command_open_spotify]
+name = "Open Spotify Flatpak"
+command = ["flatpak", "run", "com.spotify.Client"]
