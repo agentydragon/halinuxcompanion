@@ -129,6 +129,9 @@ class Companion:
                 exit(1)
             else:
                 self.sensors[name] = sensor.enabled
+                # Store custom sensor name if provided
+                if sensor.name:
+                    self.sensor_names[name] = sensor.name
 
         if (
             config.services
