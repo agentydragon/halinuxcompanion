@@ -2,7 +2,6 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import List
 
 import psutil
 
@@ -31,7 +30,7 @@ class UptimeSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> List["UptimeSensor"]:
+    async def discover_sensors(cls) -> list["UptimeSensor"]:
         """Discover uptime sensor - always returns one instance."""
         return [cls()]
 

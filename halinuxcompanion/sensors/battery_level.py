@@ -1,7 +1,6 @@
 """Battery level sensor implementation."""
 
 import logging
-from typing import List
 
 import psutil
 
@@ -22,16 +21,24 @@ class BatteryLevelSensor(BaseSensor):
 
     config_name = "battery_level"
 
-    def __init__(self, battery_id: str = ""):
-        """Initialize battery sensor.
-
-        Args:
-            battery_id: Battery identifier (e.g., "BAT0")
-        """
-        super().__init__(battery_id)
+    def __init__(self):
+        """Initialize battery sensor."""
+        super().__init__()
 
     def get_metadata(self) -> SensorMetadata:
         """Get battery sensor metadata."""
+
+        # Update icon based on battery level
+        percent = self.state
+        level = round(percent / 10) * 10
+        icon = f"mdi:battery"
+        if self.attributes["power_plugged"]:
+            icon += "-charging"
+        if level == 0:
+            icon += "-outline"
+        elif level < 100:
+            icon += f"-{level}"
+
         return SensorMetadata(
             unique_id=f"battery_level_{self.instance_id}" if self.instance_id else "battery_level",
             name=f"Battery Level ({self.instance_id})" if self.instance_id else "Battery Level",
@@ -39,22 +46,19 @@ class BatteryLevelSensor(BaseSensor):
             device_class="battery",
             state_class="measurement",
             unit_of_measurement="%",
-            icon="mdi:battery",
+            icon=icon,
         )
 
     @classmethod
-    async def discover_sensors(cls) -> List["BatteryLevelSensor"]:
+    async def discover_sensors(cls) -> list["BatteryLevelSensor"]:
         """Discover available batteries on the system."""
-        sensors = []
-
         # Check if the system has a battery
-        battery = psutil.sensors_battery()
-        if battery is not None:
+        if psutil.sensors_battery() is not None:
             # For now, create a single battery sensor
-            # TODO: Check /sys/class/power_supply/ for multiple batteries
-            sensors.append(cls())
-
-        return sensors
+            # TODO: Check /sys/class/power_supply/ for multiple batteries,
+            # create 1 sensor per battery
+            return [cls()]
+        return []
 
     async def update(self) -> None:
         """Update battery state and attributes."""
@@ -65,29 +69,9 @@ class BatteryLevelSensor(BaseSensor):
             self.attributes = {}
             return
 
-        # Update state
-        self.state = round(battery.percent)
+        self.state = battery.percent
 
-        # Update icon based on battery level
-        level = round(battery.percent / 10) * 10
-        if level == 100:
-            icon_suffix = ""
-        elif level == 0:
-            icon_suffix = "-outline"
-        else:
-            icon_suffix = f"-{level}"
-
-        # Add charging status to icon
-        if battery.power_plugged:
-            icon_suffix = f"-charging{icon_suffix}"
-
-        metadata = self.get_metadata()
-        metadata.icon = f"mdi:battery{icon_suffix}"
-
-        # Update attributes
-        self.attributes = {
-            "power_plugged": battery.power_plugged,
-        }
+        self.attributes = {"power_plugged": battery.power_plugged}
 
         # Add time remaining if available
         # psutil.POWER_TIME_UNLIMITED is -2, psutil.POWER_TIME_UNKNOWN is -1
@@ -99,3 +83,4 @@ class BatteryLevelSensor(BaseSensor):
             # Convert seconds to readable format
             self.attributes["time_left"] = format_seconds_to_time(battery.secsleft)
             self.attributes["seconds_left"] = battery.secsleft
+

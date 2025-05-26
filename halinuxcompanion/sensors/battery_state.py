@@ -1,7 +1,6 @@
 """Battery state sensor implementation."""
 
 import logging
-from typing import List
 
 import psutil
 
@@ -35,7 +34,7 @@ class BatteryStateSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> List["BatteryStateSensor"]:
+    async def discover_sensors(cls) -> list["BatteryStateSensor"]:
         """Discover available batteries on the system."""
         sensors = []
 

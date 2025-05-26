@@ -1,7 +1,7 @@
 """Memory sensor implementation."""
 
 import logging
-from typing import Dict, List
+from typing import Dict
 
 import psutil
 
@@ -34,7 +34,7 @@ class MemorySensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> List["MemorySensor"]:
+    async def discover_sensors(cls) -> list["MemorySensor"]:
         """Discover memory sensor - always returns one instance."""
         return [cls()]
 
