@@ -8,17 +8,26 @@ Application to run on Linux desktop computer to provide sensor data to Home Assi
 
 Python 3.10+ and the related `dev` dependencies (usually `python3-dev` or `python3-devel` on your package manager)
 
-### Home Assistant Token Usage
+### Authentication Methods
 
-The long-lived access token is required for:
-- **Initial device registration** with Home Assistant (one-time)
-- **Sending notification events** (ongoing, only if notifications are enabled)
+halinuxcompanion supports two authentication methods:
 
-After initial registration, most operations (sensor updates) use webhook authentication and don't require the token. Registration data is saved to `~/.local/state/halinuxcompanion/registration.json`.
+#### 1. OAuth Authentication (Recommended)
+- Run `halinuxcompanion --oauth` to authenticate via OAuth
+- Tokens are automatically refreshed when they expire
+- Stored securely in `~/.local/state/halinuxcompanion/oauth_tokens.json`
+
+#### 2. Long-Lived Access Token
+- Add `ha_token` to your config file
+- Get token from: [Home Assistant Profile](https://www.home-assistant.io/docs/authentication/#your-account-profile)
+- Required for:
+  - **Initial device registration** with Home Assistant (one-time)
+  - **Sending notification events** (ongoing, only if notifications are enabled)
+
+After initial registration, most operations (sensor updates) use webhook authentication. Registration data is saved to `~/.local/state/halinuxcompanion/registration.json`.
 
 ### Installation
 
-1. [Get a long-lived access token from your Home Assistant user](https://www.home-assistant.io/docs/authentication/#your-account-profile)
 1. Install the package:
 
    ```shell
@@ -43,6 +52,17 @@ After initial registration, most operations (sensor updates) use webhook authent
    ```
    
 1. Edit the configuration file to match your setup and desired options.
+1. Configure authentication using one of these methods:
+   
+   **Option A: OAuth (Recommended)**
+   ```shell
+   halinuxcompanion --oauth
+   ```
+   
+   **Option B: Long-lived token**
+   - [Get a token from your Home Assistant user profile](https://www.home-assistant.io/docs/authentication/#your-account-profile)
+   - Add `"ha_token": "your-token-here"` to your config file
+
 1. Run the application:
    
    ```shell
@@ -99,7 +119,7 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
 ```json
 {
   "ha_url": "http://homeassistant.local:8123/",
-  "ha_token": "mysuperlongtoken",
+  "ha_token": "mysuperlongtoken_or_leave_empty_to_use_oauth",
   "device_id": "computername",
   "device_name": "whatever you want can be left empty",
   "manufacturer": "whatever you want can be left empty",

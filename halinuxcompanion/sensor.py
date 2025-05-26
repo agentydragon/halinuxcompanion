@@ -120,7 +120,6 @@ class SensorManager:
         """
         data = {"data": sensor.register(), "type": "register_sensor"}
         sname = sensor.config_name
-        data = json.dumps(data)
         logger.info("Registering sensor:%s payload:%s", sname, data)
         res = await self.api.webhook_post("register_sensor", data=data)
 
@@ -153,7 +152,7 @@ class SensorManager:
             data,
         )
         try:
-            res = await self.api.webhook_post("update_sensors", data=json.dumps(data))
+            res = await self.api.webhook_post("update_sensors", data=data)
             if res.ok or res.status == SC_REGISTER_SENSOR:
                 logger.info("Sensors update %s successful", self.update_counter)
                 return True

@@ -39,15 +39,11 @@ EVENTS_ENPOINT = {
 }
 
 RESPONSES = {
-    "invalid_token": json.dumps(
-        {
-            "error": "push_token does not match",
-            "errorMessage": "Sent token that does not match to halinuxcompaion munrig",
-        }
-    ).encode("ascii"),
-    "ok": json.dumps({"success": True, "message": "Notification queued"}).encode(
-        "ascii"
-    ),
+    "invalid_token": {
+        "error": "push_token does not match",
+        "errorMessage": "Sent token that does not match to halinuxcompanion",
+    },
+    "ok": {"success": True, "message": "Notification queued"},
 }
 
 EMPTY_DICT = {}
@@ -139,7 +135,7 @@ class Notifier:
                 push_token,
                 self.push_token,
             )
-            return json_response(body=RESPONSES["invalid_token"], status=400)
+            return json_response(RESPONSES["invalid_token"], status=400)
 
         # Transform the notification to the format dbus uses
         notification = self.notification_transform(notification)
@@ -171,7 +167,7 @@ class Notifier:
                 self.dbus_notify(self.notification_transform(notification))
             )
 
-        return json_response(body=RESPONSES["ok"], status=201)
+        return json_response(RESPONSES["ok"], status=201)
 
     async def ha_event_trigger(
         self, event: str, action: str = "", notification: dict = {}

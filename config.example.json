@@ -1,6 +1,6 @@
 {
   "ha_url": "http://homeassistant.local:8123/",
-  "ha_token": "mysuperlongtoken",
+  "ha_token": "mysuperlongtoken_or_leave_empty_to_use_oauth",
   "device_id": "computername",
   "device_name": "whatever you want can be left empty",
   "manufacturer": "whatever you want can be left empty",
@@ -9,6 +9,7 @@
   "computer_port": 8400,
   "refresh_interval": 15,
   "loglevel": "INFO",
+  "storage_backend": "auto",
   "sensors": {
     "cpu": {
       "enabled": true,
