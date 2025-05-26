@@ -14,15 +14,32 @@ halinuxcompanion supports two authentication methods:
 
 #### 1. OAuth Authentication (Recommended)
 - Run `halinuxcompanion --oauth` to authenticate via OAuth
+- Opens a browser for authentication with Home Assistant
 - Tokens are automatically refreshed when they expire
-- Stored securely in `~/.local/state/halinuxcompanion/oauth_tokens.json`
+- Supports secret storage backends (see below)
 
 #### 2. Long-Lived Access Token
 - Add `ha_token` to your config file
 - Get token from: [Home Assistant Profile](https://www.home-assistant.io/docs/authentication/#your-account-profile)
-- Required for:
-  - **Initial device registration** with Home Assistant (one-time)
-  - **Sending notification events** (ongoing, only if notifications are enabled)
+- Note: Config files containing tokens must have restricted permissions (600)
+
+### Secret Storage
+
+Authentication tokens can be stored using different backends:
+
+1. **System Keyring (libsecret)** - Recommended
+   - Uses GNOME Keyring, KDE Wallet, or other system keyrings
+   - Most secure option - tokens encrypted by system
+   - Set `storage_backend: "libsecret"` in config
+
+2. **File Storage** - Default fallback
+   - Tokens stored in `~/.local/state/halinuxcompanion/`
+   - Files have restricted permissions (600)
+   - Set `storage_backend: "file"` in config
+
+3. **Auto** - Default
+   - Tries libsecret first, falls back to file storage
+   - Set `storage_backend: "auto"` in config (or omit)
 
 After initial registration, most operations (sensor updates) use webhook authentication. Registration data is saved to `~/.local/state/halinuxcompanion/registration.json`.
 
@@ -120,6 +137,7 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
 {
   "ha_url": "http://homeassistant.local:8123/",
   "ha_token": "mysuperlongtoken_or_leave_empty_to_use_oauth",
+  "storage_backend": "auto",
   "device_id": "computername",
   "device_name": "whatever you want can be left empty",
   "manufacturer": "whatever you want can be left empty",

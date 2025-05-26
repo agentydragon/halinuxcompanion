@@ -2,10 +2,10 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 
+import aiohttp
 import toml
 from xdg_base_dirs import xdg_config_home, xdg_state_home
 
@@ -13,8 +13,9 @@ from halinuxcompanion.api import API, AuthenticationError, Server
 from halinuxcompanion.companion import Companion
 from halinuxcompanion.dbus import Dbus
 from halinuxcompanion.notifier import Notifier
-from halinuxcompanion.oauth import OAuthFlow, check_file_permissions
-from halinuxcompanion.secrets import StorageBackend, get_secret_storage
+from halinuxcompanion.secret_storage.file import check_file_permissions
+from halinuxcompanion.oauth import OAuthFlow
+from halinuxcompanion.secrets import SecretStorageBackend, get_secret_storage
 from halinuxcompanion.sensor import Sensor, SensorManager
 from halinuxcompanion.sensors import *
 
@@ -23,11 +24,11 @@ logger = logging.getLogger("halinuxcompanion")
 
 
 def load_config(file: Path) -> dict:
-    logger.info("Reading configuration file %s", file)
+    logger.info(f"Reading configuration from {file}")
 
     # First check if file exists
     if not file.exists():
-        logger.critical(f"Config file {file} not found, exiting now")
+        logger.critical(f"Config file {file} not found, exiting")
         exit(1)
 
     with open(file) as f:
@@ -108,8 +109,15 @@ async def main():
 
     config = load_config(args.config)
 
+    # Command line loglevel takes precedence
+    if args.loglevel != "":
+        logger.setLevel(args.loglevel)
+    elif "loglevel" in config:
+        logger.setLevel(config["loglevel"])
+
     # Get the storage backend
-    storage_backend = StorageBackend(config.get("storage_backend", "auto"))
+    storage_backend = SecretStorageBackend(config.get("storage_backend", "auto"))
+    print(f"Using storage backend: {storage_backend.value}")
     state_dir = xdg_state_home() / "halinuxcompanion"
     storage = get_secret_storage(storage_backend, state_dir)
 
@@ -118,15 +126,9 @@ async def main():
         ha_url = config.get("ha_url", "http://homeassistant.local:8123").rstrip("/")
 
         print(f"Starting OAuth authentication flow with {ha_url}")
-        print(f"Using storage backend: {storage_backend.value}")
         await OAuthFlow(ha_url).run(storage)
+        print("\nOAuth authentication successful.")
         sys.exit(0)
-
-    # Command line loglevel takes precedence
-    if args.loglevel != "":
-        logger.setLevel(args.loglevel)
-    elif "loglevel" in config:
-        logger.setLevel(config["loglevel"])
 
     companion = Companion(config)  # Companion objet where configuration is stored
     api = API(companion, storage)  # API client to send data to Home Assistant
@@ -160,10 +162,11 @@ async def main():
             logger.critical(f"Device registration failed")
             raise
 
-        if not await sensor_manager.register_sensors():
-            # If sensors can't be registered exit immidiately, nothing to do.
+        try:
+            await sensor_manager.register_sensors()
+        except:
             logger.critical("Sensor registration failed, exiting now")
-            exit(1)
+            raise
     except AuthenticationError:
         logger.critical("Authentication failed")
         raise

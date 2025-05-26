@@ -1,70 +1,86 @@
-from types import MethodType
-from halinuxcompanion.sensor import Sensor
+"""Memory sensor implementation."""
+
+import logging
+from typing import Dict, List
+
 import psutil
 
-allow_update: bool = True
+from ..sensor_base import BaseSensor, SensorMetadata
+from ..dbus import dbus_signal_handler
 
-Memory = Sensor()
-Memory.config_name = "memory"
-Memory.attributes = {
-    "total": 0,
-    "available": 0,
-    "used": 0,
-    "free": 0,
-}
-
-Memory.device_class = "power_factor"
-Memory.state_class = "measurement"
-Memory.icon = "mdi:memory"
-Memory.name = "Memory Load"
-Memory.state = 0
-Memory.type = "sensor"
-Memory.unique_id = "memory_usage"
-Memory.unit_of_measurement = "%"
+logger = logging.getLogger(__name__)
 
 
-async def on_prepare_for_sleep(self, v):
-    """Handler for system sleep and wake up from sleep events.
-    https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+class MemorySensor(BaseSensor):
+    """Memory usage sensor."""
 
-    :param v: True if going to sleep, False if waking up from it
-    """
-    global allow_update
-    if v:
-        allow_update = False
-        self.state = "unavailable"
-    else:
-        allow_update = True
+    config_name = "memory"
 
+    def __init__(self):
+        """Initialize memory sensor."""
+        super().__init__()
+        self._allow_update = True
 
-async def on_prepare_for_shutdown(self, v):
-    """Handler for system shutdown/reboot.
-    https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+    def get_metadata(self) -> SensorMetadata:
+        """Get memory sensor metadata."""
+        return SensorMetadata(
+            unique_id="memory_usage",
+            name="Memory Load",
+            config_name=self.config_name,
+            device_class="power_factor",
+            state_class="measurement",
+            unit_of_measurement="%",
+            icon="mdi:memory",
+        )
 
-    :param v: True if shutting down, False if powering on.
-    """
-    global allow_update
-    if v:
-        allow_update = False
-        self.state = "unavailable"
-    else:
-        allow_update = True
+    @classmethod
+    async def discover_sensors(cls) -> List["MemorySensor"]:
+        """Discover memory sensor - always returns one instance."""
+        return [cls()]
 
+    async def update(self) -> None:
+        """Update memory state and attributes."""
+        if not self._allow_update:
+            self.state = "unavailable"
+            return
 
-def updater(self):
-    if not allow_update:
-        return
+        # Get memory information
+        memory = psutil.virtual_memory()
 
-    data = psutil.virtual_memory()
-    self.state = round((data.total - data.available) / data.total * 100, 1)
-    self.attributes["total"] = data.total / 1024
-    self.attributes["available"] = data.available / 1024
-    self.attributes["used"] = data.used / 1024
-    self.attributes["free"] = data.free / 1024
+        # Calculate percentage used
+        self.state = round((memory.total - memory.available) / memory.total * 100, 1)
 
+        # Update attributes (convert to KB)
+        self.attributes = {
+            "total": memory.total / 1024,
+            "available": memory.available / 1024,
+            "used": memory.used / 1024,
+            "free": memory.free / 1024,
+        }
 
-Memory.updater = MethodType(updater, Memory)
-Memory.signals = {
-    "system.login_on_prepare_for_sleep": on_prepare_for_sleep,
-    "system.login_on_prepare_for_shutdown": on_prepare_for_shutdown,
-}
+    @dbus_signal_handler("system.login_on_prepare_for_sleep")
+    async def on_prepare_for_sleep(self, v: bool) -> None:
+        """Handler for system sleep and wake up from sleep events.
+
+        https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+
+        Args:
+            v: True if going to sleep, False if waking up from it
+        """
+        self._allow_update = not v
+        if v:
+            self.state = "unavailable"
+
+    @dbus_signal_handler("system.login_on_prepare_for_shutdown")
+    async def on_prepare_for_shutdown(self, v: bool) -> None:
+        """Handler for system shutdown/reboot.
+
+        https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+
+        Args:
+            v: True if shutting down, False if powering on.
+        """
+        self._allow_update = not v
+        if v:
+            self.state = "unavailable"
+

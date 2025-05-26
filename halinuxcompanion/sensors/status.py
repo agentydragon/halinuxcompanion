@@ -1,62 +1,99 @@
-from types import MethodType
-from halinuxcompanion.sensor import Sensor
-import psutil
-import os
+"""Status sensor implementation."""
 
 import logging
+from typing import Dict, List, Optional
+
+from ..sensor_base import BaseSensor, SensorMetadata
+from ..dbus import dbus_signal_handler
 
 logger = logging.getLogger(__name__)
 
-Status = Sensor()
-Status.config_name = "status"
-Status.type = "binary_sensor"
-Status.device_class = "power"
-Status.name = "Status"
-Status.unique_id = "status"
-Status.icon = "mdi:cpu-64-bit"
 
-Status.state = True
-Status.attributes = {"reason": "power_on", "idle": "unknown"}
+class StatusSensor(BaseSensor):
+    """System status sensor (power/sleep state)."""
 
-IDLE = {True: {"idle": "true"}, False: {"idle": "false"}}
-SLEEP = {True: {"reason": "sleep"}, False: {"reason": "wake"}}
-SHUTDOWN = {True: {"reason": "power_off"}, False: {"reason": "power_on"}}
+    sensor_type = "binary_sensor"
+    config_name = "status"
 
+    def __init__(self):
+        """Initialize status sensor."""
+        super().__init__()
+        self._sleep_state = False
+        self._shutdown_state = False
+        self._idle_state: Optional[bool] = None
 
-async def on_prepare_for_sleep(self, v):
-    """Handler for system sleep and wake up from sleep events.
-    https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+    def get_metadata(self) -> SensorMetadata:
+        """Get status sensor metadata."""
+        return SensorMetadata(
+            unique_id="status",
+            name="Status",
+            config_name=self.config_name,
+            device_class="power",
+            icon="mdi:cpu-64-bit",
+        )
 
-    :param v: True if going to sleep, False if waking up from it
-    """
-    self.state = not v
-    self.attributes = SLEEP[v]
+    @classmethod
+    async def discover_sensors(cls) -> List["StatusSensor"]:
+        """Discover status sensor - always returns one instance."""
+        return [cls()]
 
+    async def update(self) -> None:
+        """Update status state and attributes.
 
-async def on_prepare_for_shutdown(self, v):
-    """Handler for system shutdown/reboot.
-    https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+        Note: This sensor is primarily updated via D-Bus signals.
+        The update method just ensures the state is consistent.
+        """
+        # State is True when system is on, False when sleeping/shutting down
+        self.state = not (self._sleep_state or self._shutdown_state)
 
-    :param v: True if shutting down, False if powering on.
-    """
-    self.state = not v
-    self.attributes = SHUTDOWN[v]
+        # Update attributes
+        self.attributes = {}
 
+        if self._shutdown_state:
+            self.attributes["reason"] = "power_off"
+        elif self._sleep_state:
+            self.attributes["reason"] = "sleep"
+        else:
+            self.attributes["reason"] = "power_on"
 
-async def screensaver_on_active_changed(self, v):
-    """Handler for session screensaver status changes."""
-    self.attributes.update(IDLE[v])
+        # Add idle state if known
+        if self._idle_state is not None:
+            self.attributes["idle"] = "true" if self._idle_state else "false"
+        else:
+            self.attributes["idle"] = "unknown"
 
+    @dbus_signal_handler("system.login_on_prepare_for_sleep")
+    async def on_prepare_for_sleep(self, v: bool) -> None:
+        """Handler for system sleep and wake up from sleep events.
 
-def updater(self):
-    # Updated only by signals
-    pass
+        https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
 
+        Args:
+            v: True if going to sleep, False if waking up from it
+        """
+        self._sleep_state = v
+        await self.update()
 
-Status.updater = MethodType(updater, Status)
-Status.signals = {
-    "system.login_on_prepare_for_sleep": on_prepare_for_sleep,
-    "system.login_on_prepare_for_shutdown": on_prepare_for_shutdown,
-    "session.screensaver_on_active_changed": screensaver_on_active_changed,
-    "session.gnome_screensaver_on_active_changed": screensaver_on_active_changed,
-}
+    @dbus_signal_handler("system.login_on_prepare_for_shutdown")
+    async def on_prepare_for_shutdown(self, v: bool) -> None:
+        """Handler for system shutdown/reboot.
+
+        https://www.freedesktop.org/software/systemd/man/org.freedesktop.login1.html
+
+        Args:
+            v: True if shutting down, False if powering on.
+        """
+        self._shutdown_state = v
+        await self.update()
+
+    @dbus_signal_handler("session.screensaver_on_active_changed")
+    @dbus_signal_handler("session.gnome_screensaver_on_active_changed")
+    async def screensaver_on_active_changed(self, v: bool) -> None:
+        """Handler for session screensaver status changes.
+
+        Args:
+            v: True if screensaver is active (idle), False otherwise
+        """
+        self._idle_state = v
+        await self.update()
+

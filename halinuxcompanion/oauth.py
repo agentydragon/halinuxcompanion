@@ -1,17 +1,13 @@
 import asyncio
 import ipaddress
-import json
 import logging
-import os
 import secrets
-import stat
 import webbrowser
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from functools import partial
-from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from typing import TYPE_CHECKING
+from urllib.parse import urlencode, urlparse, urlunparse
 
 from aiohttp import ClientSession, web
 from pydantic import BaseModel
@@ -20,16 +16,13 @@ if TYPE_CHECKING:
     from .secrets import SecretStorage
 
 
+logger = logging.getLogger(__name__)
+
+
 class AuthenticationError(Exception):
     """Raised when OAuth authentication fails."""
 
     pass
-
-
-logger = logging.getLogger(__name__)
-
-# OAuth configuration
-OAUTH_CALLBACK_PORT = 9736  # Fixed port for OAuth callback server
 
 
 def is_url_using_ip(url: str) -> bool:
@@ -55,30 +48,28 @@ class OAuthTokens(BaseModel):
     - refresh_token: Token to refresh access when it expires
     - expires_in: Seconds until token expires (from server response)
     - token_type: Usually "Bearer"
-    - expires_at: Added by us - absolute expiry time calculated from expires_in
+
+    Additional fields added by us:
+    - expires_at: absolute expiry time calculated from expires_in
     """
 
     access_token: str
     refresh_token: str
     expires_in: int  # Keep as int to match server response
-    token_type: str = "Bearer"
+    token_type: str  # Usually "Bearer"
     expires_at: datetime  # Added field for absolute expiry time
 
-    @property
-    def expires_in_delta(self) -> timedelta:
-        """Calculate time until expiration as timedelta."""
-        delta = self.expires_at - datetime.now(timezone.utc)
-        return max(timedelta(0), delta)
+    # Extras seen, not handled: {"ha_auth_provider": "homeassistant"}
 
     @property
     def is_expired(self) -> bool:
         """Check if token has actually expired."""
-        return datetime.now(timezone.utc) >= self.expires_at
+        return datetime.now() >= self.expires_at
 
     @property
     def expires_soon(self) -> bool:
         """Check if token expires within the next 60 seconds."""
-        return datetime.now(timezone.utc) >= self.expires_at - timedelta(seconds=60)
+        return datetime.now() >= self.expires_at - timedelta(seconds=60)
 
 
 @dataclass
@@ -100,7 +91,7 @@ class OAuthFlow:
         self.state = secrets.token_urlsafe(32)
         # Create future for auth code
         self._auth_code_future = asyncio.get_event_loop().create_future()
-        self.redirect_port = OAUTH_CALLBACK_PORT
+        self.redirect_port = 9736
 
     @property
     def redirect_uri(self) -> str:
@@ -151,7 +142,7 @@ class OAuthFlow:
             code = request.query.get("code")
             state = request.query.get("state")
 
-            if not code or not state:
+            if not (code and state):
                 error_msg = request.query.get("error", "Unknown error")
                 if error_desc := request.query.get("error_description", ""):
                     error_msg += f" - {error_desc}"
@@ -162,12 +153,12 @@ class OAuthFlow:
 
             # Set the auth code in the future
             auth_code_future.set_result(code)
-            return self._make_html_response("Authentication Successful!", "You can close this window now.")
+            return self._make_html_response("Authentication successful!", "You can close this window now.")
 
         except AuthenticationError as e:
             logger.error(str(e))
             auth_code_future.set_exception(e)
-            return self._make_html_response("Authentication Failed", str(e))
+            return self._make_html_response("Authentication failed", str(e))
 
     async def _request_token(self, session: ClientSession, operation: str, data: dict) -> OAuthTokens:
         """Common method to request tokens from Home Assistant."""
@@ -181,7 +172,7 @@ class OAuthFlow:
                 raise AuthenticationError(f"Token {operation} failed: {resp.status} - {error_text}")
 
             token_data = await resp.json()
-        expires_delta = timedelta(seconds=token_data.get("expires_in", 1800))
+        expires_delta = timedelta(seconds=token_data["expires_in"])
         token_data["expires_at"] = (expires_at := datetime.now() + expires_delta)
 
         logger.info(f"Token {operation} successful, expires at {expires_at.isoformat()} " f"({expires_delta} from now)")
@@ -236,77 +227,25 @@ class OAuthFlow:
 
         runner = web.AppRunner(app)
         await runner.setup()
-
-        # Use fixed port for OAuth callback
-        await web.TCPSite(runner, self.redirect_host, self.redirect_port).start()
-
         try:
+            await web.TCPSite(runner, self.redirect_host, self.redirect_port).start()
+
             print(f"\nOpening browser for authentication...")
             print(f"If browser doesn't open, please visit: {self.authorization_url}\n")
             webbrowser.open(self.authorization_url)
 
             # Wait for auth code from callback
-            try:
-                auth_code = await auth_code_future
-            except AuthenticationError as e:
-                print(f"\nAuthentication failed: {e}")
-                raise
+            auth_code = await auth_code_future
         finally:
             await runner.cleanup()
 
         # Exchange code for tokens
         async with ClientSession() as session:
-            try:
-                tokens = await self.exchange_code_for_token(session, auth_code)
-            except AuthenticationError as e:
-                print(f"\n{e}")
-                raise
+            # Save tokens using the storage backend
+            tokens = await self.exchange_code_for_token(session, auth_code)
+            storage.save_oauth_tokens(tokens)
 
-        # Save tokens using the storage backend
-        storage.save_oauth_tokens(tokens)
         print("\nAuthentication successful! Tokens saved.")
-
-
-def check_file_permissions(path: Path) -> None:
-    """Check that a file has secure permissions and ownership.
-
-    Comprehensive security checks for files containing secrets:
-    - Permissions must be 0o600 (owner read/write only)
-    - Must be owned by current user
-    - Must not be a symlink
-    - Parent directory must have secure permissions
-    - Must be a regular file (not device, socket, etc.)
-
-    Raises:
-        PermissionError: If file permissions are insecure
-        OSError: If unable to check file stats
-    """
-    try:
-        file_stat = os.stat(path)
-    except OSError as e:
-        raise PermissionError(f"Cannot stat {path}: {e}")
-
-    if not stat.S_ISREG(file_stat.st_mode):
-        raise PermissionError(f"{path} is not a regular file. Files containing secrets must be regular files.")
-
-    mode = file_stat.st_mode
-
-    if mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise PermissionError(
-            f"{path} has overly permissive permissions ({oct(stat.S_IMODE(mode))}). Fix with: chmod 600 {path}"
-        )
-
-    if file_stat.st_uid != os.getuid():
-        raise PermissionError(f"{path} is owned by uid {file_stat.st_uid}, not current user ({os.getuid()}).")
-
-    parent = path.parent
-    parent_stat = parent.stat()
-
-    if parent_stat.st_mode & stat.S_IWOTH:
-        raise PermissionError(f"{parent} is world-writable. Fix with: chmod o-w {parent}")
-
-    if parent_stat.st_uid not in (os.getuid(), 0):
-        raise PermissionError(f"{parent} owned by uid {parent_stat.st_uid}, not current user or root.")
 
 
 async def ensure_valid_oauth_token(
@@ -337,12 +276,12 @@ async def ensure_valid_oauth_token(
     logger.info("Access token expired, attempting to refresh...")
     try:
         new_tokens = await OAuthFlow(ha_url).refresh_access_token(session, oauth_tokens.refresh_token)
-        storage.save_oauth_tokens(new_tokens)
-        logger.info("OAuth token refreshed successfully")
-        return new_tokens
-    except AuthenticationError as e:
+    except AuthenticationError:
         raise AuthenticationError(
-            f"OAuth token refresh failed: {e}\n"
+            f"OAuth token refresh failed.\n"
             "Your authentication has expired. Please re-authenticate:\n"
             "Run: halinuxcompanion --oauth"
         )
+    storage.save_oauth_tokens(new_tokens)
+    logger.info("OAuth token refreshed successfully")
+    return new_tokens

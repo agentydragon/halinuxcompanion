@@ -19,11 +19,14 @@ pip install -e ".[dev]"
 
 ### Authentication
 ```bash
-# Run OAuth authentication flow
+# Run OAuth authentication flow (recommended)
 halinuxcompanion --oauth
 
 # Or configure long-lived token in config file
 # ha_token: "your-long-lived-token"
+
+# Configure storage backend in config file
+# storage_backend: "auto"  # auto, libsecret, or file
 ```
 
 ### Running
@@ -58,7 +61,7 @@ black . --line-length 120
    - Supports TOML (preferred) and JSON formats
    - Uses Pydantic for validation
    - Stores registration in `~/.local/state/halinuxcompanion/registration.json`
-   - OAuth tokens stored in `~/.local/state/halinuxcompanion/oauth_tokens.json` (chmod 600)
+   - Secret storage backends: libsecret (system keyring) or file storage with permission checks
 
 2. **Sensor System** (`sensor.py`, `sensors/`)
    - Base `Sensor` class with auto-registration pattern
@@ -91,6 +94,33 @@ black . --line-length 120
 ## Important Notes
 
 - Python 3.10+ required
-- The long-lived access token is only needed for initial registration and notification events
+- Authentication options:
+  - OAuth (recommended): Automatic token refresh, browser-based authentication
+  - Long-lived access token: Manual token management
+- Secret storage:
+  - libsecret: Uses system keyring (GNOME Keyring, KDE Wallet, etc.)
+  - file: Stores with strict permission checks (600)
+- OAuth requirements:
+  - Must use domain name (not IP) unless connecting to local/private networks
+  - Fixed callback port 9736 for client_id consistency
 - Most operations after registration use webhook authentication
 - Configuration examples: `config.example.toml` (preferred) and `config.example.json`
+
+## OAuth Implementation Details
+
+### OAuth Flow (`oauth.py`)
+- Uses OAuth 2.0 authorization code flow
+- Fixed port 9736 for callback server
+- Automatic token refresh with 60-second expiration buffer
+- IP address validation for OAuth compatibility
+
+### Secret Storage (`secrets.py`)
+- Abstract `SecretStorage` interface
+- `LibSecretStorage`: System keyring integration
+- `FileSecretStorage`: File-based with permission checks
+- Comprehensive security validations (permissions, ownership, symlinks)
+
+### API Authentication (`api.py`)
+- Transparent handling of OAuth and long-lived tokens
+- Automatic token refresh for OAuth
+- Raises `AuthenticationError` when re-authentication needed

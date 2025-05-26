@@ -1,12 +1,13 @@
+import asyncio
+import logging
+from functools import partial, update_wrapper
 from types import MethodType
+from typing import Callable, Dict, List, Union
+
+from aiohttp import ClientError
+
 from halinuxcompanion.api import API
 from halinuxcompanion.dbus import Dbus
-from aiohttp import ClientError
-from typing import Union, List, Dict, Callable
-from functools import partial, update_wrapper
-import json
-import logging
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -41,17 +42,6 @@ class Sensor:
         """To be called every time update is called"""
         pass
 
-    def update(self) -> dict:
-        """Payload to update the sensor"""
-        self.updater()
-        return {
-            "attributes": self.attributes,
-            "icon": self.icon,
-            "state": self.state,
-            "type": self.type,
-            "unique_id": self.unique_id,
-        }
-
     def register(self) -> dict:
         self.updater()
         """Payload to register the sensor"""
@@ -67,12 +57,7 @@ class Sensor:
             "state_class": self.state_class,
             "entity_category": self.entity_category,
         }
-        pop = []
-        for key in data:
-            if data[key] == "":
-                pop.append(key)
-        [data.pop(key) for key in pop]
-        return data
+        return {k: v for k, v in data.items() if v != ""}
 
     def update(self) -> dict:
         """Payload to update the sensor"""
@@ -99,19 +84,14 @@ class SensorManager:
         self.sensors = sensors
         self.dbus = dbus
 
-    async def register_sensors(self) -> bool:
+    async def register_sensors(self):
         """Register all sensors with Home Assisntat
         If all have been registered successfully, register each sensor signals
         """
-        res = await asyncio.gather(*[self._register_sensor(s) for s in self.sensors])
-        if all(res):
-            # If all sensors registered successfully, register their signals
-            await self.register_signals()
-            return True
+        await asyncio.gather(*[self._register_sensor(s) for s in self.sensors])
+        await self.register_signals()
 
-        return False
-
-    async def _register_sensor(self, sensor: Sensor) -> bool:
+    async def _register_sensor(self, sensor: Sensor):
         """Register a sensor with Home Assisntat
         If the registration fails it's a critical error and the program should exit.
 
@@ -120,58 +100,47 @@ class SensorManager:
         """
         data = {"data": sensor.register(), "type": "register_sensor"}
         sname = sensor.config_name
-        logger.info("Registering sensor:%s payload:%s", sname, data)
+        logger.info(f"Registering sensor:{sname} {data=}")
         res = await self.api.webhook_post("register_sensor", data=data)
 
-        if res.ok or res.status == SC_REGISTER_SENSOR:
-            logger.info("Sensor registration successful: %s", sname)
-            return True
-        else:
-            logger.error('Sensor registration failed with status code:%s sensor:%s', res.status, sensor.unique_id)
-            return False
+        if not (res.ok or res.status == SC_REGISTER_SENSOR):
+            raise RuntimeError(f"Sensor registration failed for {sname} with status code: {res.status}")
 
-    async def update_sensors(self, sensors: List[Sensor] = []) -> bool:
+        logger.info(f"Sensor registration successful: {sname}")
+
+    async def update_sensors(self, sensors: List[Sensor] | None = None) -> bool:
         """Update the given sensors with Home Assisntat
         If the update fails it's an error and it should be retried by the caller.
 
         :param sensors: The sensors to update, if empty all sensors will be updated
         :return: True if the update was successful, False otherwise
         """
-        sensors = sensors or self.sensors
+        if sensors is None:
+            sensors = self.sensors
         self.update_counter += 1
         data = {
             "type": "update_sensor_states",
             "data": [sensor.update() for sensor in sensors],
         }
         snames = [sensor.config_name for sensor in sensors]
-        logger.info("Sensors update %s with sensors: %s", self.update_counter, snames)
-        logger.debug(
-            "Sensors update %s with sensors: %s payload: %s",
-            self.update_counter,
-            snames,
-            data,
-        )
+        prefix = f"Sensors update {self.update_counter}"
+        logger.info(f"{prefix} with sensors: {snames}")
+        logger.debug(f"{prefix} with sensors: {snames} {data=}")
         try:
             res = await self.api.webhook_post("update_sensors", data=data)
             if res.ok or res.status == SC_REGISTER_SENSOR:
-                logger.info("Sensors update %s successful", self.update_counter)
+                logger.info(f"{prefix} successful")
                 return True
             else:
                 logger.error(
-                    "Sensors update %s failed with status code:%s",
-                    self.update_counter,
-                    res.status,
+                    f"{prefix} failed with status code:{res.status}",
                 )
-        except ClientError as e:
-            logger.error(
-                "Sensors update %s failed with error:%s", self.update_counter, e
-            )
+        except ClientError:
+            logger.error(f"{prefix} failed with error:%s")
 
         return False
 
-    async def _signal_handler(
-        self, signal_alias: str, signal_handler: Callable, sensor: Sensor, *args
-    ) -> None:
+    async def _signal_handler(self, signal_alias: str, signal_handler: Callable, sensor: Sensor, *args) -> None:
         """Signal handler for the sensor manager
         Each sensor can have multiple signals, at the moment defined in halinuxcompanion.dbus, the callback provided for
         the signal is this function wrapped in a functools.partial this allows for the SensorManager to be in charge of

@@ -2,15 +2,13 @@
 
 import json
 import logging
-import os
-import stat
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
-from typing import Dict, Literal, Optional
+from typing import Dict, Optional
 
-from .oauth import OAuthTokens, check_file_permissions
+from .oauth import OAuthTokens
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +17,13 @@ try:
     import gi
 
     gi.require_version("Secret", "1")
-    from gi.repository import GLib, Secret
+    from gi.repository import Secret
 except (ImportError, ValueError):
     Secret = None
     GLib = None
 
 
-class StorageBackend(str, Enum):
+class SecretStorageBackend(str, Enum):
     """Available storage backends for secrets."""
 
     FILE = "file"
@@ -65,98 +63,6 @@ class SecretStorage(ABC):
     def delete_long_lived_token(self) -> None:
         """Delete long-lived access token from storage."""
         pass
-
-
-class FileSecretStorage(SecretStorage):
-    """File-based secret storage with permission checks."""
-
-    def __init__(self, state_dir: Path):
-        self.state_dir = state_dir
-        self.oauth_token_file = state_dir / "oauth_tokens.json"
-        self.lat_file = state_dir / "long_lived_token"
-
-    def _ensure_secure_directory(self, path: Path) -> None:
-        """Ensure directory exists with secure permissions.
-
-        Creates the directory if needed and validates security.
-        """
-        # Create with restrictive permissions
-        path.mkdir(parents=True, exist_ok=True, mode=0o700)
-
-        # Check parent directory security
-        parent = path.parent
-        # Parent directory should not be world-writable
-        if parent.stat().st_mode & stat.S_IWOTH:
-            raise PermissionError(
-                f"Parent directory {parent} is world-writable. "
-                f"This is a security risk. Fix with: chmod o-w {parent}"
-            )
-
-    def _write_secure_file(self, file_path: Path, content: str) -> None:
-        """Write content to file with security checks."""
-        # Ensure directory exists and is secure
-        self._ensure_secure_directory(file_path.parent)
-
-        # Write file
-        with open(file_path, "w") as f:
-            f.write(content)
-
-        # Set restrictive permissions immediately
-        os.chmod(file_path, 0o600)
-
-    def _read_secure_file(self, file_path: Path) -> Optional[str]:
-        """Read content from file with security checks."""
-        if not file_path.exists():
-            return None
-
-        # Check file permissions for security
-        try:
-            check_file_permissions(file_path)
-        except PermissionError as e:
-            logger.error("Security error")
-            raise
-
-        try:
-            with open(file_path, "r") as f:
-                return f.read()
-        except OSError as e:
-            logger.error(f"Error reading {file_path}")
-            raise
-
-    def load_oauth_tokens(self) -> Optional[OAuthTokens]:
-        """Load OAuth tokens from file."""
-        content = self._read_secure_file(self.oauth_token_file)
-        if not content:
-            return None
-
-        try:
-            return OAuthTokens.model_validate(json.loads(content))
-        except ValueError as e:
-            logger.error("Error parsing OAuth tokens")
-            return None
-
-    def save_oauth_tokens(self, tokens: OAuthTokens) -> None:
-        """Save OAuth tokens to file."""
-        self._write_secure_file(self.oauth_token_file, tokens.model_dump_json())
-
-    def delete_oauth_tokens(self) -> None:
-        """Delete OAuth tokens file."""
-        if self.oauth_token_file.exists():
-            self.oauth_token_file.unlink()
-
-    def load_long_lived_token(self) -> Optional[str]:
-        """Load long-lived token from file."""
-        content = self._read_secure_file(self.lat_file)
-        return content.strip() if content else None
-
-    def save_long_lived_token(self, token: str) -> None:
-        """Save long-lived token to file."""
-        self._write_secure_file(self.lat_file, token)
-
-    def delete_long_lived_token(self) -> None:
-        """Delete long-lived token file."""
-        if self.lat_file.exists():
-            self.lat_file.unlink()
 
 
 class LibSecretStorage(SecretStorage):
@@ -258,7 +164,7 @@ class LibSecretStorage(SecretStorage):
         self._clear_password("long_lived_token")
 
 
-def get_secret_storage(backend: StorageBackend, state_dir: Path) -> SecretStorage:
+def get_secret_storage(backend: SecretStorageBackend, state_dir: Path) -> SecretStorage:
     """Get the appropriate secret storage backend.
 
     Args:
@@ -272,7 +178,10 @@ def get_secret_storage(backend: StorageBackend, state_dir: Path) -> SecretStorag
         ValueError: If invalid backend
         ImportError: If libsecret requested but not available
     """
-    if backend == StorageBackend.AUTO:
+    # Import here to avoid circular imports
+    from .secret_storage.file import FileSecretStorage
+
+    if backend == SecretStorageBackend.AUTO:
         # Try libsecret first, fall back to file
         if Secret is not None:
             try:
@@ -281,10 +190,10 @@ def get_secret_storage(backend: StorageBackend, state_dir: Path) -> SecretStorag
                 logger.warning("Failed to initialize libsecret, falling back to file storage")
         return FileSecretStorage(state_dir)
 
-    if backend == StorageBackend.LIBSECRET:
+    if backend == SecretStorageBackend.LIBSECRET:
         return LibSecretStorage()
 
-    if backend == StorageBackend.FILE:
+    if backend == SecretStorageBackend.FILE:
         return FileSecretStorage(state_dir)
 
     raise ValueError(f"Unknown storage backend: {backend}")

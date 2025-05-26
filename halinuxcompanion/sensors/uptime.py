@@ -1,15 +1,44 @@
-from halinuxcompanion.sensor import Sensor
-import psutil
-from datetime import datetime, timezone
+"""Uptime sensor implementation."""
 
-Uptime = Sensor()
-Uptime.config_name = "uptime"
-Uptime.device_class = "timestamp"
-Uptime.state_class = ""
-Uptime.icon = "mdi:clock"
-Uptime.name = "Uptime"
-Uptime.state = 0
-Uptime.type = "sensor"
-Uptime.unique_id = "uptime"
-Uptime.unit_of_measurement = ""
-Uptime.state = datetime.fromtimestamp(psutil.boot_time(), timezone.utc).isoformat()
+import logging
+from datetime import datetime, timezone
+from typing import List
+
+import psutil
+
+from ..sensor_base import BaseSensor, SensorMetadata
+
+logger = logging.getLogger(__name__)
+
+
+class UptimeSensor(BaseSensor):
+    """System uptime sensor."""
+
+    config_name = "uptime"
+
+    def __init__(self):
+        """Initialize uptime sensor."""
+        super().__init__()
+
+    def get_metadata(self) -> SensorMetadata:
+        """Get uptime sensor metadata."""
+        return SensorMetadata(
+            unique_id="uptime",
+            name="Uptime",
+            config_name=self.config_name,
+            device_class="timestamp",
+            icon="mdi:clock",
+        )
+
+    @classmethod
+    async def discover_sensors(cls) -> List["UptimeSensor"]:
+        """Discover uptime sensor - always returns one instance."""
+        return [cls()]
+
+    async def update(self) -> None:
+        """Update uptime state."""
+        # Get boot time and convert to ISO format timestamp
+        boot_time = psutil.boot_time()
+        self.state = datetime.fromtimestamp(boot_time, timezone.utc).isoformat()
+        self.attributes = {}
+

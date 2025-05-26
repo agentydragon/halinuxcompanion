@@ -1,7 +1,7 @@
 from dbus_next.aio import MessageBus, ProxyInterface
 from dbus_next import BusType
 from dbus_next.errors import DBusError
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,9 @@ SIGNALS = {
     },
     "subscribed": [],
 }
+
+# Global registry for signal handlers registered via decorator
+dbus_signal_handlers = {}
 
 INTERFACES = {
     LOGIN_INTERFACE: {
@@ -110,3 +113,45 @@ class Dbus:
             SIGNALS["subscribed"].append((signal_alias, callback))
         else:
             logger.warning("Could not register signal callback for interface:%s, signal:%s", iface_name, signal_name)
+
+
+
+def dbus_signal_handler(signal_alias: str):
+    """Decorator to mark a method as a D-Bus signal handler.
+    
+    Args:
+        signal_alias: The signal alias from SIGNALS (e.g., "system.login_on_prepare_for_sleep")
+    
+    Example:
+        @dbus_signal_handler("system.login_on_prepare_for_sleep")
+        async def handle_sleep(self, active: bool):
+            if active:
+                self.state = "sleeping"
+    """
+    def decorator(func: Callable) -> Callable:
+        # Mark the function with metadata instead of registering immediately
+        # This allows us to register bound methods later
+        func._dbus_signal_alias = signal_alias
+        return func
+    
+    return decorator
+
+
+async def register_sensor_dbus_handlers(sensor: Any, dbus_instance: "Dbus") -> None:
+    """Register all D-Bus signal handlers found on a sensor instance.
+    
+    Args:
+        sensor: The sensor instance to scan for handlers
+        dbus_instance: The D-Bus connection instance
+    """
+    # Find all methods with the _dbus_signal_alias attribute
+    for attr_name in dir(sensor):
+        attr = getattr(sensor, attr_name)
+        if callable(attr) and hasattr(attr, "_dbus_signal_alias"):
+            signal_alias = attr._dbus_signal_alias
+            # Register the bound method
+            await dbus_instance.register_signal(signal_alias, attr)
+            logger.debug(
+                f"Registered D-Bus handler on {sensor.__class__.__name__}.{attr_name} "
+                f"for signal {signal_alias}"
+            )

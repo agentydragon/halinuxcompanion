@@ -1,9 +1,11 @@
+import json
+
+import pytest
+
 from halinuxcompanion.api import Server
+from halinuxcompanion.companion import CommandConfig, Companion
 from halinuxcompanion.notifier import Notifier
 from halinuxcompanion.sensors.status import Status
-import json
-from halinuxcompanion.companion import CommandConfig, Companion
-import pytest
 
 
 def get_config() -> dict:
@@ -70,10 +72,6 @@ async def test_notifier():
     }
     result = await notifier.on_ha_notification(RequestStub(payload))
     assert result is not None
-
-
-def test_setup():
-    assert True
 
 
 def test_companion_init():

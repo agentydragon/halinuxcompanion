@@ -1,34 +1,69 @@
-from types import MethodType
-from halinuxcompanion.sensor import Sensor
+"""Camera state sensor implementation."""
+
+import logging
 from glob import glob
 from subprocess import run
-from logging import getLogger
+from typing import List
 
-CameraState = Sensor()
-CameraState.config_name = "camera_state"
-CameraState.attributes = {}
+from ..sensor_base import BaseSensor, SensorMetadata
 
-CameraState.icon = "mdi:video-off"
-CameraState.name = "Camera State"
-CameraState.state = "unavailable"
-CameraState.type = "sensor"
-CameraState.unique_id = "camera_state"
+logger = logging.getLogger(__name__)
 
-def updater(self):
-    logger = getLogger(__name__)
 
-    ''' Get list of /dev/video* devices '''
-    devices = glob("/dev/video*")
+class CameraStateSensor(BaseSensor):
+    """Camera state sensor."""
 
-    ''' Call fuser to check if any camera is being used '''
-    output = run(["fuser"] + devices, capture_output=True, check=False).stdout
-    output = output.decode("utf-8")
-    logger.debug(f"CameraState: {output}")
-    if output == "":
-        self.state = "idle"
-        self.icon = "mdi:video-off"
-    else:
-        self.state = "active"
-        self.icon = "mdi:video"
+    config_name = "camera_state"
 
-CameraState.updater = MethodType(updater, CameraState)
+    def __init__(self):
+        """Initialize camera state sensor."""
+        super().__init__()
+
+    def get_metadata(self) -> SensorMetadata:
+        """Get camera state sensor metadata."""
+        # Dynamic icon based on state
+        icon = "mdi:video" if self.state == "active" else "mdi:video-off"
+
+        return SensorMetadata(
+            unique_id="camera_state",
+            name="Camera State",
+            config_name=self.config_name,
+            icon=icon,
+        )
+
+    @classmethod
+    async def discover_sensors(cls) -> List["CameraStateSensor"]:
+        """Discover camera state sensor - always returns one instance."""
+        return [cls()]
+
+    async def update(self) -> None:
+        """Update camera state."""
+        # Get list of /dev/video* devices
+        devices = glob("/dev/video*")
+
+        if not devices:
+            self.state = "unavailable"
+            self.attributes = {}
+            return
+
+        # Call fuser to check if any camera is being used
+        try:
+            result = run(["fuser"] + devices, capture_output=True, check=False)
+            output = result.stdout.decode("utf-8").strip()
+
+            logger.debug(f"CameraState fuser output: {output}")
+
+            if output:
+                self.state = "active"
+            else:
+                self.state = "idle"
+
+            self.attributes = {
+                "device_count": len(devices),
+                "devices": devices,
+            }
+
+        except Exception as e:
+            logger.error(f"Error checking camera state: {e}")
+            self.state = "unavailable"
+            self.attributes = {}
