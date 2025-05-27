@@ -3,6 +3,7 @@
 import logging
 from glob import glob
 from subprocess import run
+from typing import Any, Dict, Optional
 
 from ..sensor_base import BaseSensor, SensorMetadata
 
@@ -31,7 +32,7 @@ class CameraStateSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> list["CameraStateSensor"]:
+    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
         """Discover camera state sensor - always returns one instance."""
         return [cls()]
 

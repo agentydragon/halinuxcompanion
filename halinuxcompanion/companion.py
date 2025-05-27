@@ -1,16 +1,19 @@
-import os
-import json
-import platform
-import uuid
-import logging
-import secrets
 import asyncio
+import json
+import logging
+import os
+import platform
+import secrets
+import uuid
 from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
-from xdg_base_dirs import xdg_state_home
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import aiohttp
+from pydantic import BaseModel, Field
+from xdg_base_dirs import xdg_state_home
+
+from .models import RegistrationData
+from .hardware_config import HardwareConfig
 
 SC_INTEGRATION_DELETED = 410
 
@@ -21,20 +24,6 @@ if TYPE_CHECKING:
 def get_state_dir() -> Path:
     """Get the state directory path using XDG_STATE_HOME."""
     return xdg_state_home() / "halinuxcompanion"
-
-CONFIG_KEYS = [
-    ("ha_url", True),
-    ("ha_token", False),  # Now optional - can use OAuth instead
-    ("device_id", True),
-    ("device_name", False),
-    ("manufacturer", False),
-    ("model", False),
-    ("computer_ip", True),
-    ("computer_port", True),
-    ("refresh_interval", False),
-    ("services", True),
-    ("sensors", True),
-]
 
 
 class CommandConfig(BaseModel):
@@ -52,24 +41,19 @@ class ServicesConfig(BaseModel):
     notifications: Optional[NotificationServiceConfig]
 
 
-class SensorConfig(BaseModel):
-    enabled: bool
-    name: Optional[str] = None
-
-
 class CompanionConfig(BaseModel):
     ha_url: str
-    ha_token: Optional[str] = None
+    ha_token: str | None = None
     device_id: str
-    device_name: Optional[str]
-    manufacturer: Optional[str]
-    model: Optional[str]
+    device_name: str | None
+    manufacturer: str | None
+    model: str | None
     computer_ip: str
     computer_port: int
     refresh_interval: Optional[int]
-    sensors: Dict[str, SensorConfig]
+    hardware: HardwareConfig = Field(default_factory=HardwareConfig)
     services: Optional[ServicesConfig]
-    storage_backend: Optional[str] = "auto"  # "file", "libsecret", or "auto"
+    storage_backend: str = "auto"  # "file", "libsecret", or "auto"
 
 
 logger = logging.getLogger("halinuxcompanion")
@@ -95,7 +79,7 @@ class Companion:
     # TODO: Encryption requires https://github.com/jedisct1/libsodium
     encryption_key: str = "NOT IMPLEMENTED"
     supports_encryption: bool = False
-    app_data: dict = {}
+    app_data: dict
     notifier: bool = False
     refresh_interval: int = 15
     computer_ip: str = ""
@@ -103,11 +87,14 @@ class Companion:
     ha_url: str = "http://localhost:8123"
     ha_token: Optional[str] = None
     url_program: str = ""
-    commands: Dict[str, CommandConfig] = {}
-    sensors: Dict[str, bool] = {}
-    sensor_names: Dict[str, str] = {}
+    commands: Dict[str, CommandConfig]
+    hardware: HardwareConfig
 
     def __init__(self, config: dict):
+        # Initialize mutable defaults
+        self.commands = {}
+        self.app_data = {}
+        
         # Load only allowed values
         parsed = CompanionConfig.model_validate(config)
         self.load_config_from_model(parsed)
@@ -122,18 +109,9 @@ class Companion:
         self.computer_ip = config.computer_ip
         self.computer_port = config.computer_port
         self.refresh_interval = config.refresh_interval if config.refresh_interval else self.refresh_interval
-
-        from halinuxcompanion.sensors import __all__ as all_sensors
-
-        for name, sensor in config.sensors.items():
-            if name not in all_sensors:
-                logger.error("Sensor %s doesn't exist", name)
-                exit(1)
-            else:
-                self.sensors[name] = sensor.enabled
-                # Store custom sensor name if provided
-                if sensor.name:
-                    self.sensor_names[name] = sensor.name
+        
+        # Store hardware configuration
+        self.hardware = config.hardware
 
         if config.services and config.services.notifications and config.services.notifications.enabled:
             self.notifier = True
@@ -156,10 +134,8 @@ class Companion:
             "app_data": self.app_data,
         }
 
-    async def check_registration(self, api: "API", data: dict) -> bool:
-        """
-        Check if the current registration is still valid
-        """
+    async def check_registration(self, api: "API", data: RegistrationData) -> bool:
+        """Check if current registration is still valid"""
         logger.info("Checking if device is already registered")
         api.process_registration_data(data)
         res = await api.webhook_post("get_config", data={"type": "get_config"})
@@ -169,12 +145,12 @@ class Companion:
             logger.info("Device registration has been deleted, need to register again")
             return False
         else:
-            logger.error("Device registration failed with status code %s", res.status)
+            logger.error(f"Device registration failed with {res.status=}")
             raise Exception("Device registration failed " + str(res.status))
 
-    async def register(self, api: "API", max_retries: int = 3) -> dict:
+    async def register(self, api: "API", max_retries: int = 3) -> RegistrationData:
         """Register the companion with Home Assistant with retry logic.
-        
+
         :param api: API instance for communication
         :param max_retries: Maximum number of registration attempts
         :return: registration_data if successful
@@ -182,45 +158,45 @@ class Companion:
         """
         register_data = json.dumps(self.registration_payload())
         last_exception = None
-        
+
         for attempt in range(max_retries):
             if attempt > 0:
                 # Exponential backoff: 2^attempt seconds (2s, 4s, 8s...)
-                wait_time = 2 ** attempt
-                logger.warning(f"Registration attempt {attempt + 1}/{max_retries}, waiting {wait_time}s before retry...")
+                wait_time = 2**attempt
+                logger.warning(
+                    f"Registration attempt {attempt + 1}/{max_retries}, waiting {wait_time}s before retry..."
+                )
                 await asyncio.sleep(wait_time)
-            
-            logger.info("Registering companion device with payload:%s", register_data)
-            
+
+            logger.info(f"Registering companion device with {register_data=}")
+
             try:
                 res = await api.post("/api/mobile_app/registrations", data=register_data)
-                
-                if res.ok:
-                    data = await res.json()
-                    logger.info("Device Registration successful: %s", data)
-                    self.save_registration_data(data)
-                    return data
-                else:
-                    text = await res.text()
-                    error_msg = f"Device Registration failed with status code {res.status}, text: {text}"
-                    logger.error(error_msg)
-                    last_exception = Exception(error_msg)
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 logger.error(f"Registration attempt {attempt + 1} failed with error")
                 last_exception = e
-        
+
+            if res.ok:
+                data = await res.json()
+                logger.info(f"Device registration successful: {data=}")
+                registration_data = RegistrationData.model_validate(data)
+                self.save_registration_data(registration_data)
+                return registration_data
+            else:
+                text = await res.text()
+                error_msg = f"Device registration failed with {res.status=}, {text=}"
+                logger.error(error_msg)
+                last_exception = Exception(error_msg)
+
         logger.critical(f"Device Registration failed after {max_retries} attempts")
         raise last_exception
 
-    async def load_or_register(self, api: "API") -> dict:
+    async def load_or_register(self, api: "API") -> RegistrationData:
         """
         Load registration data from disk or register the companion APP
-        
-        :return: registration_data
-        :raises: Exception if registration fails
-        """
-        registration_data = self.load_registration_data()
 
+        :return: registration_data
+        """
         # Load or generate push token if notifications are enabled
         if self.notifier:
             state_data = self._load_state_data()
@@ -235,73 +211,60 @@ class Companion:
                 # Save it for future use
                 self._save_state_data({"push_token": push_token})
 
-            self.app_data = {
-                "push_token": push_token,
-                "push_url": f"http://{self.computer_ip}:{self.computer_port}/notify",
-            }
+            self.app_data = {"push_token": push_token}
 
-        if registration_data:
-            logger.info("Loaded existing registration data from disk %s", registration_data)
-            
-            # Validate required fields (only webhook_id is truly required)
-            if not registration_data.get("webhook_id"):
-                logger.warning("Registration data is incomplete (missing webhook_id), re-registering")
-                return await self.register(api)
-            
-            if await self.check_registration(api, registration_data):
-                logger.info("Device already registered")
-                return registration_data
-            else:
-                logger.warning("Device registration check failed, re-registering")
-                return await self.register(api)
-                
-        return await self.register(api)
+        registration_data = await self.load_registration_data(api)
+        if not registration_data:
+            logger.info("Registration data not found or needing re-registration, registering device")
+            return await self.register(api)
+        return registration_data
 
-    def _get_state_dir(self) -> Path:
-        """Get the state directory path using XDG_STATE_HOME."""
-        return get_state_dir()
-
-    def _get_registration_path(self) -> Path:
+    @property
+    def registration_path(self) -> Path:
         """Get the registration file path."""
-        return self._get_state_dir() / "registration.json"
+        return get_state_dir() / "registration.json"
 
-    def save_registration_data(self, data: dict):
+    def save_registration_data(self, data: RegistrationData):
         # store data in $XDG_STATE_HOME/halinuxcompanion/registration.json
-        registration_path = self._get_registration_path()
-        registration_path.parent.mkdir(parents=True, exist_ok=True)
+        self.registration_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(registration_path, "w") as f:
-            f.write(json.dumps(data))
+        with open(self.registration_path, "w") as f:
+            f.write(data.model_dump_json())
 
-    def load_registration_data(self) -> Optional[dict]:
-        registration_path = self._get_registration_path()
+    async def load_registration_data(self, api) -> Optional[RegistrationData]:
+        if not self.registration_path.exists():
+            return None
 
-        if registration_path.exists():
-            with open(registration_path, "r") as f:
-                return json.load(f)
-        return None
+        with open(self.registration_path) as f:
+            data = json.load(f)
 
-    def _get_state_path(self) -> Path:
+        # Validate and parse registration data
+        try:
+            registration_data = RegistrationData.model_validate(data)
+        except (ValueError, TypeError):
+            logger.warning("Invalid registration data format", exc_info=True)
+            return None
+
+        if not await self.check_registration(api, registration_data):
+            logger.warning("Device registration check failed, will re-register")
+            return None
+
+        return registration_data
+
+    @property
+    def state_path(self) -> Path:
         """Get the state file path."""
-        return self._get_state_dir() / "state.json"
+        return get_state_dir() / "state.json"
 
     def _load_state_data(self) -> Optional[dict]:
         """Load state data including push token."""
-        state_path = self._get_state_path()
-
-        if state_path.exists():
-            with open(state_path, "r") as f:
-                return json.load(f)
-        return None
+        if not self.state_path.exists():
+            return None
+        with open(self.state_path) as f:
+            return json.load(f)
 
     def _save_state_data(self, data: dict):
         """Save state data including push token."""
-        state_path = self._get_state_path()
-        state_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Load existing data and update it
-        existing_data = self._load_state_data() or {}
-        existing_data.update(data)
-
-        with open(state_path, "w") as f:
-            f.write(json.dumps(existing_data))
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.state_path, "w") as f:
+            json.dump(data, f)

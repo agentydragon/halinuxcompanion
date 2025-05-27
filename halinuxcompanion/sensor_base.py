@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SensorMetadata:
     """Metadata for a sensor instance."""
-    
+
     unique_id: str
     name: str
     config_name: str
@@ -20,6 +20,7 @@ class SensorMetadata:
     unit_of_measurement: Optional[str] = None
     icon: Optional[str] = None
     entity_category: Optional[str] = None
+    native_unit_of_measurement: Optional[str] = None
 
 
 class BaseSensor(ABC):
@@ -38,22 +39,60 @@ class BaseSensor(ABC):
     # Registry of all sensor classes
     _registry: ClassVar[Dict[str, Type["BaseSensor"]]] = {}
 
-    def __init__(self, instance_id: str = ""):
+    def __init__(
+        self,
+        instance_id: str = "",
+        unique_id: Optional[str] = None,
+        name: Optional[str] = None,
+        device_class: Optional[str] = None,
+        state_class: Optional[str] = None,
+        unit_of_measurement: Optional[str] = None,
+        native_unit_of_measurement: Optional[str] = None,
+        icon: Optional[str] = None,
+        entity_category: Optional[str] = None,
+    ):
         """Initialize a sensor instance.
 
         Args:
             instance_id: Unique identifier for this instance (e.g., "BAT0" for battery)
+            unique_id: Unique ID override
+            name: Name override
+            device_class: Device class override
+            state_class: State class override
+            unit_of_measurement: Unit of measurement override
+            native_unit_of_measurement: Native unit of measurement override
+            icon: Icon override
+            entity_category: Entity category override
         """
         self.instance_id = instance_id
         self.state: Union[str, int, float] = "unavailable"
         self.attributes: Dict[str, Any] = {}
+        
+        # Store metadata overrides
+        self._unique_id = unique_id
+        self._name = name
+        self._device_class = device_class
+        self._state_class = state_class
+        self._unit_of_measurement = unit_of_measurement
+        self._native_unit_of_measurement = native_unit_of_measurement
+        self._icon = icon
+        self._entity_category = entity_category
         self._metadata: Optional[SensorMetadata] = None
 
-    def __init_subclass__(cls, **kwargs):
-        """Register sensor subclasses automatically."""
-        super().__init_subclass__(**kwargs)
-        if hasattr(cls, "config_name"):
-            cls._registry[cls.config_name] = cls
+    @classmethod
+    def register(cls, config_name: str):
+        """Decorator to register a sensor class.
+        
+        Usage:
+            @BaseSensor.register("battery_level")
+            class BatteryLevelSensor(BaseSensor):
+                ...
+        """
+        def decorator(sensor_class: Type["BaseSensor"]) -> Type["BaseSensor"]:
+            sensor_class.config_name = config_name
+            cls._registry[config_name] = sensor_class
+            return sensor_class
+        return decorator
 
     @classmethod
     def get_sensor_class(cls, config_name: str) -> Optional[Type["BaseSensor"]]:
@@ -67,8 +106,11 @@ class BaseSensor(ABC):
 
     @classmethod
     @abstractmethod
-    async def discover_sensors(cls) -> list["BaseSensor"]:
+    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
         """Discover available sensors of this type.
+
+        Args:
+            config: Optional sensor-specific configuration
 
         Returns:
             List of sensor instances found on the system
@@ -86,9 +128,15 @@ class BaseSensor(ABC):
             # Build default metadata
             unique_suffix = f"_{self.instance_id}" if self.instance_id else ""
             self._metadata = SensorMetadata(
-                unique_id=f"{self.config_name}{unique_suffix}",
-                name=self._get_default_name(),
+                unique_id=self._unique_id or f"{self.config_name}{unique_suffix}",
+                name=self._name or self._get_default_name(),
                 config_name=self.config_name,
+                device_class=self._device_class,
+                state_class=self._state_class,
+                unit_of_measurement=self._unit_of_measurement,
+                icon=self._icon,
+                entity_category=self._entity_category,
+                native_unit_of_measurement=self._native_unit_of_measurement,
             )
         return self._metadata
 
@@ -111,7 +159,7 @@ class BaseSensor(ABC):
             "state": self.state,
             "type": self.sensor_type,
             "unique_id": metadata.unique_id,
-            "unit_of_measurement": metadata.unit_of_measurement,
+            "unit_of_measurement": metadata.unit_of_measurement or metadata.native_unit_of_measurement,
             "state_class": metadata.state_class,
             "entity_category": metadata.entity_category,
         }
@@ -228,4 +276,3 @@ class DiscoverySensorManager:
             self.sensors[unique_id] = sensor
 
         return added, removed
-

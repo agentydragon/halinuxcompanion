@@ -106,6 +106,34 @@ black . --line-length 120
 - Most operations after registration use webhook authentication
 - Configuration examples: `config.example.toml` (preferred) and `config.example.json`
 
+## Code Style Guidelines
+
+### Exception Handling
+- Keep try-except blocks as minimal as possible - only wrap the specific operations that can throw the exception
+- Never use broad exception catching without good reason
+- Example:
+  ```python
+  # BAD - too broad
+  try:
+      with open(path, "r") as f:
+          content = f.read()
+      if "error" in content:
+          return None
+  except Exception:
+      return None
+  
+  # GOOD - minimal scope
+  try:
+      with open(path, "r") as f:
+          content = f.read()
+  except (OSError, IOError) as e:
+      logger.error(f"Failed to read {path}: {e}")
+      return None
+  
+  if "error" in content:
+      return None
+  ```
+
 ## OAuth Implementation Details
 
 ### OAuth Flow (`oauth.py`)
@@ -124,3 +152,6 @@ black . --line-length 120
 - Transparent handling of OAuth and long-lived tokens
 - Automatic token refresh for OAuth
 - Raises `AuthenticationError` when re-authentication needed
+
+## Coding Reminders
+- Make sure to register hardware classes in halinuxcompanion/sensor.py and other places so they work

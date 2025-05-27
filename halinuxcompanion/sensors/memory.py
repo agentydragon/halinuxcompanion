@@ -1,12 +1,12 @@
 """Memory sensor implementation."""
 
 import logging
-from typing import Dict
+from typing import Any, Dict, Optional
 
 import psutil
 
-from ..sensor_base import BaseSensor, SensorMetadata
 from ..dbus import dbus_signal_handler
+from ..sensor_base import BaseSensor, SensorMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class MemorySensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> list["MemorySensor"]:
+    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
         """Discover memory sensor - always returns one instance."""
         return [cls()]
 
@@ -83,4 +83,3 @@ class MemorySensor(BaseSensor):
         self._allow_update = not v
         if v:
             self.state = "unavailable"
-

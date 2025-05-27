@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Dict
+from typing import Any, Dict, Optional
 
 import psutil
 
@@ -36,7 +36,7 @@ class CpuSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> list["CpuSensor"]:
+    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
         """Discover CPU sensor - always returns one instance."""
         return [cls()]
 

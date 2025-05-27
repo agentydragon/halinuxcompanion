@@ -10,34 +10,46 @@ refresh_interval = 15
 loglevel = "INFO"
 storage_backend = "auto"  # "file", "libsecret", or "auto" (tries libsecret first)
 
-[sensors]
-[sensors.cpu]
+# Hardware configuration
+[hardware.battery]
 enabled = true
-name = "CPU"
+implementation = "psutil"  # or "upower" for more detailed battery information
 
-[sensors.memory]
+[hardware.network]
 enabled = true
-name = "Memory Load"
+interfaces = ["eth0", "wlan0"]  # List of interfaces to monitor
+show_status = true  # Show up/down status
+show_counters = true  # Show TX/RX byte counters
+show_ip_addresses = false  # Show IP addresses
 
-[sensors.uptime]
+[hardware.cpu]
 enabled = true
-name = "Uptime"
 
-[sensors.status]
+[hardware.memory]
 enabled = true
-name = "Status"
 
-[sensors.battery_level]
+[hardware.camera]
 enabled = true
-name = "Battery Level"
 
-[sensors.battery_state]
+[hardware.lid]
 enabled = true
-name = "Battery State"
 
-[sensors.camera_state]
+[hardware.bluetooth]
 enabled = true
-name = "Camera State"
+devices = [
+    "AA:BB:CC:DD:EE:FF",
+    "11:22:33:44:55:66"
+]
+
+[hardware.status]
+enabled = true
+
+[hardware.uptime]
+enabled = true
+
+[hardware.temperature]
+enabled = true
+# TODO: Add sensor filtering when implemented
 
 [services]
 [services.notifications]

@@ -7,3 +7,6 @@ ha_config/
 *.xml
 .coverage
 halinuxcompanion.egg-info
+
+references/android
+references/home-assistant-core

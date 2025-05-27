@@ -1,7 +1,7 @@
 """Status sensor implementation."""
 
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ..sensor_base import BaseSensor, SensorMetadata
 from ..dbus import dbus_signal_handler
@@ -33,7 +33,7 @@ class StatusSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls) -> list["StatusSensor"]:
+    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
         """Discover status sensor - always returns one instance."""
         return [cls()]
 

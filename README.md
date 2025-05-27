@@ -131,6 +131,14 @@ To run halinuxcompanion as a systemd service:
 
 Now in your Home Assistant you will see a new device in the **"mobile_app"** integration, and there will be a new service to notify your Linux desktop. Notification actions work and the expected events will be fired in Home Assistant.
 
+### Command Line Options
+
+- `--config <path>`: Specify custom config file location (default: `~/.config/halinuxcompanion/config.toml`)
+- `--loglevel <level>`: Set logging level (DEBUG, INFO, WARNING, ERROR)
+- `--oauth`: Run OAuth authentication flow and exit
+- `--sensor-state`: Print current sensor states and exit (useful for debugging)
+- `--version`: Show version information
+
 ## [Example configuration file](config.example.json)
 
 ```json
@@ -174,6 +182,28 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
     "camera_state": {
       "enabled": true,
       "name": "Camera State"
+    },
+    "lid_state": {
+      "enabled": true,
+      "name": "Lid State"
+    },
+    "network_interface": {
+      "enabled": true,
+      "name": "Network Interface"
+    },
+    "temperature": {
+      "enabled": true,
+      "name": "Temperature"
+    },
+    "bluetooth_device": {
+      "enabled": true,
+      "name": "Bluetooth Device",
+      "config": {
+        "devices": [
+          "AA:BB:CC:DD:EE:FF",
+          "11:22:33:44:55:66"
+        ]
+      }
     }
   },
   "services": {
@@ -235,23 +265,156 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
 
 ## Features
 
-- Sensors:
-  - CPU
-  - Memory
-  - Uptime
-  - Status: Computer status, reflects if the computer went to sleep, wakes up, shutdown, turned on. The sensor is updated right before any of these events happen by listening to dbus signals.
-  - Battery Level
-  - Batter State
-- Notifications:
-  - [Actionable Notifications](https://companion.home-assistant.io/docs/notifications/actionable-notifications#building-actionable-notifications) (Triggers event in Home Assistant)
-      - [Local action handler using URI](https://companion.home-assistant.io/docs/notifications/actionable-notifications#uri-values): only relative style `/lovelace/myviwew` and `http(s)` uri supported so far.
-  - [Notification cleared/dismissed](https://companion.home-assistant.io/docs/notifications/notification-cleared/) (Triggers event in Home Assistant)
-  - [Timeout](https://companion.home-assistant.io/docs/notifications/notifications-basic#notification-timeout)
-  - [Commands](https://companion.home-assistant.io/docs/notifications/notification-commands/)
-  - [Replacing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#replacing)
-  - [Clearing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#clearing)
-  - [Icon](https://companion.home-assistant.io/docs/notifications/notifications-basic/#notification-icon) **TODO**
-- Default commands (example config):
+### Sensors
+
+halinuxcompanion exposes the following sensors to Home Assistant:
+
+#### CPU (`cpu`)
+- **State**: CPU usage percentage (0-100)
+- **Attributes**:
+  - `load_1m`, `load_5m`, `load_15m`: System load averages
+  - `cpu_count`: Number of CPU cores
+
+#### Memory (`memory`)
+- **State**: Memory usage percentage (0-100)
+- **Attributes**:
+  - `used`: Used memory in bytes
+  - `total`: Total memory in bytes
+  - `available`: Available memory in bytes
+  - `used_gb`: Used memory in GB
+  - `total_gb`: Total memory in GB
+  - `available_gb`: Available memory in GB
+
+#### Uptime (`uptime`)
+- **State**: System uptime in seconds
+- **Attributes**:
+  - `days`, `hours`, `minutes`, `seconds`: Uptime breakdown
+  - `readable`: Human-readable uptime (e.g., "5d 3h 45m 12s")
+
+#### Status (`status`)
+- **State**: `True` when system is running, `False` when going to sleep/shutdown
+- **Attributes**:
+  - `reason`: Current state reason (`power_on`, `sleep`, `shutdown`, etc.)
+  - `idle`: Idle state (`active`, `idle`, `locked`, `unknown`)
+- **Note**: Updated via D-Bus signals before sleep/shutdown events
+
+#### Battery Sensors
+
+halinuxcompanion provides two battery sensor implementations. Choose one based on your needs:
+
+##### Battery Sensor Comparison
+
+| Attribute | Type | Unit | `battery_psutil` | `battery_upower` | Example |
+|-----------|------|------|------------------|------------------|---------|
+| **State** | float | % | ✓ | ✓ | `87.5` |
+| `power_plugged` | bool | - | ✓ | ✓ | `true` |
+| `battery_state` | string | - | ✓ | ✓ | `"Charging"` |
+| **Time Information** | | | | | |
+| `time_to_empty` | string | - | ✓¹ | ✓¹ | `"2h 15m 30s"` |
+| `seconds_to_empty` | int | s | ✓¹ | ✓¹ | `8130` |
+| `time_to_full` | string | - | ✗ | ✓² | `"1h 30m"` |
+| `seconds_to_full` | int | s | ✗ | ✓² | `5400` |
+| **Power/Energy** | | | | | |
+| `charging_rate_w` | float | W | ✗ | ✓² | `45.2` |
+| `discharge_rate_w` | float | W | ✗ | ✓¹ | `15.7` |
+| `energy_wh` | float | Wh | ✗ | ✓ | `47.52` |
+| `energy_full_wh` | float | Wh | ✗ | ✓ | `57.72` |
+| `energy_empty_wh` | float | Wh | ✗ | ✓ | `0.0` |
+| **Battery Health** | | | | | |
+| `health_percent` | float | % | ✗ | ✓ | `92.3` |
+| `capacity_percent` | float | % | ✗ | ✓ | `91.8` |
+| `charge_cycles` | int | - | ✗ | ✓ | `127` |
+| **Technical Info** | | | | | |
+| `voltage_v` | float | V | ✗ | ✓ | `12.4` |
+| `temperature_c` | float | °C | ✗ | ✓ | `32.5` |
+| `technology` | string | - | ✗ | ✓ | `"Lithium polymer"` |
+| **Device Info** | | | | | |
+| `warning_level` | string | - | ✗ | ✓ | `"Low"` |
+| `model` | string | - | ✗ | ✓ | `"DELL 0FDRT"` |
+| `vendor` | string | - | ✗ | ✓ | `"SMP"` |
+| `serial` | string | - | ✗ | ✓ | `"1234"` |
+
+¹ Only when discharging  
+² Only when charging
+
+##### Battery State Values
+
+**Common values** (both implementations):
+- `"Charging"` - Battery is charging
+- `"Discharging"` - Battery is discharging
+- `"Fully charged"` - Battery is full
+
+**Additional values** (battery_upower only):
+- `"Unknown"` - State cannot be determined
+- `"Empty"` - Battery is empty
+- `"Pending charge"` - Battery is waiting to charge
+- `"Pending discharge"` - Battery is waiting to discharge
+
+#### Camera State (`camera_state`)
+- **State**: `on` or `off`
+- **Attributes**:
+  - `in_use`: Whether camera is currently in use
+  - `path`: Camera device path (e.g., `/dev/video0`)
+
+#### Lid State (`lid_state`)
+- **State**: `on` (open) or `off` (closed)
+- **Type**: Binary sensor
+- **Device Class**: `opening`
+
+#### Network Interfaces (`network_interface`)
+- **State**: Total bytes transferred (sent + received)
+- **Attributes**:
+  - `interface`: Interface name
+  - `is_up`: Whether interface is up
+  - `speed`: Link speed in Mbps
+  - `mtu`: Maximum transmission unit
+  - `bytes_sent`, `bytes_recv`, `bytes_total`: Traffic counters
+  - `bytes_sent_formatted`, `bytes_recv_formatted`, `bytes_total_formatted`: Human-readable formats
+  - `packets_sent`, `packets_recv`: Packet counters
+  - `errors_in`, `errors_out`: Error counters
+  - `drop_in`, `drop_out`: Dropped packet counters
+  - `ipv4_addresses`: IPv4 addresses (only if `show_ip_addresses` is enabled)
+  - `ipv6_addresses`: IPv6 addresses (only if `show_ip_addresses` is enabled)
+  - `mac_address`: MAC address (only if `show_mac_address` is enabled)
+
+#### Network Interface Status (`network_interface_status`)
+- **State**: `on` (up) or `off` (down)
+- **Type**: Binary sensor
+- **Attributes**: Same as network interface sensor
+
+#### Temperature (`temperature`)
+- **State**: Temperature in Celsius
+- **Attributes**:
+  - `sensor_name`: Internal sensor identifier
+  - `sensor_label`: Human-readable sensor name
+  - `max_threshold`: Maximum safe temperature (if available)
+  - `max_threshold_reached`: Whether max threshold is exceeded
+  - `critical_threshold`: Critical temperature (if available)
+  - `critical_threshold_reached`: Whether critical threshold is exceeded
+  - `status`: `normal`, `high`, `critical`, or `low`
+
+#### Bluetooth Devices (`bluetooth_device`)
+For each whitelisted Bluetooth device, the following sensors are created:
+
+- **Battery Level**: Device battery percentage (if supported)
+- **Connected Status**: Binary sensor for connection state
+- **Visible Status**: Binary sensor for device visibility
+- **Volume**: Audio volume percentage (if applicable)
+- **Playback State**: `playing`, `paused`, `stopped`, or `unknown`
+- **Debug Info**: JSON object with all available device information
+
+### Notifications
+
+- [Actionable Notifications](https://companion.home-assistant.io/docs/notifications/actionable-notifications#building-actionable-notifications) (Triggers event in Home Assistant)
+  - [Local action handler using URI](https://companion.home-assistant.io/docs/notifications/actionable-notifications#uri-values): only relative style `/lovelace/myview` and `http(s)` uri supported so far.
+- [Notification cleared/dismissed](https://companion.home-assistant.io/docs/notifications/notification-cleared/) (Triggers event in Home Assistant)
+- [Timeout](https://companion.home-assistant.io/docs/notifications/notifications-basic#notification-timeout)
+- [Commands](https://companion.home-assistant.io/docs/notifications/notification-commands/)
+- [Replacing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#replacing)
+- [Clearing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#clearing)
+- [Icon](https://companion.home-assistant.io/docs/notifications/notifications-basic/#notification-icon) **TODO**
+
+### Default Commands (example config)
   - Suspend
   - Power off
   - Reboot

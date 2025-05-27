@@ -1,11 +1,29 @@
-import os, pathlib
+"""Sensor implementations for halinuxcompanion."""
 
-__all__ = []
-
-# Find all the sensor modules
-this_dir = pathlib.Path(__file__).parent.absolute()
-for root, dirs, files in os.walk(this_dir):
-    for file in files:
-        if file.endswith('.py') and not file.startswith('__'):
-            sensor = os.path.splitext(os.path.basename(file))[0]
-            __all__.append(sensor)
+# List of all available sensor config names
+__all__ = [
+    # Battery sensors
+    "battery_psutil",
+    "battery_psutil_time_to_empty",
+    "battery_upower",
+    "battery_upower_charge_cycles",
+    "battery_upower_energy",
+    "battery_upower_energy_full",
+    "battery_upower_health",
+    "battery_upower_power",
+    "battery_upower_temperature",
+    "battery_upower_time_to_empty",
+    "battery_upower_time_to_full",
+    "battery_upower_voltage",
+    # Other sensors
+    "bluetooth_device",
+    "camera_state",
+    "cpu",
+    "lid_state",
+    "memory",
+    "network_interface",
+    "network_interface_status",
+    "status",
+    "temperature",
+    "uptime",
+]

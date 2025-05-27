@@ -13,11 +13,20 @@ from halinuxcompanion.api import API, AuthenticationError, Server
 from halinuxcompanion.companion import Companion
 from halinuxcompanion.dbus import Dbus
 from halinuxcompanion.notifier import Notifier
-from halinuxcompanion.secret_storage.file import check_file_permissions
 from halinuxcompanion.oauth import OAuthFlow
+from halinuxcompanion.secret_storage.file import check_file_permissions
 from halinuxcompanion.secrets import SecretStorageBackend, get_secret_storage
-from halinuxcompanion.sensor import Sensor, SensorManager
-from halinuxcompanion.sensors import *
+from halinuxcompanion.sensor import SensorManager
+from halinuxcompanion.sensor_base import BaseSensor
+from halinuxcompanion.hardware import BatteryHardwareClass
+from halinuxcompanion.hardware.network import NetworkHardwareClass
+from halinuxcompanion.hardware.cpu import CPUHardwareClass
+from halinuxcompanion.hardware.memory import MemoryHardwareClass
+from halinuxcompanion.hardware.bluetooth import BluetoothHardwareClass
+from halinuxcompanion.hardware.camera import CameraHardwareClass
+from halinuxcompanion.hardware.lid import LidHardwareClass
+from halinuxcompanion.hardware.temperature import TemperatureHardwareClass
+from halinuxcompanion.hardware.uptime import UptimeHardwareClass
 
 # set logging level using and environment variable
 logger = logging.getLogger("halinuxcompanion")
@@ -70,6 +79,75 @@ def get_default_config_path() -> Path:
     return toml_path
 
 
+async def print_sensor_states(companion: Companion) -> None:
+    """Print current states of all enabled sensors."""
+    print("\n=== Sensor States ===\n")
+
+    # Map of hardware config fields to hardware classes
+    hardware_classes = {
+        "battery": BatteryHardwareClass,
+        "network": NetworkHardwareClass,
+        "cpu": CPUHardwareClass,
+        "memory": MemoryHardwareClass,
+        "bluetooth": BluetoothHardwareClass,
+        "camera": CameraHardwareClass,
+        "lid": LidHardwareClass,
+        "temperature": TemperatureHardwareClass,
+        "uptime": UptimeHardwareClass,
+    }
+    
+    # Collect all sensors to update
+    all_sensors = []
+    sensor_info = {}  # Store hw_name and metadata for printing
+    hardware_instances = {}  # Store hardware instances for bulk update
+    
+    # Discover sensors for each enabled hardware class
+    for hw_name, hw_class in hardware_classes.items():
+        hw_config = getattr(companion.hardware, hw_name, None)
+        if hw_config and hw_config.enabled:
+            hw_instance = hw_class(hw_config)
+            hardware_instances[hw_name] = hw_instance
+            discovered = await hw_instance.discover_sensors()
+            
+            if discovered:
+                for sensor in discovered:
+                    all_sensors.append(sensor)
+                    sensor_info[sensor] = (hw_name, sensor.get_metadata())
+    
+    # First update all hardware classes (bulk updates)
+    for hw_name, hw_class in hardware_classes.items():
+        hw_config = getattr(companion.hardware, hw_name, None)
+        if hw_config and hw_config.enabled and hw_name in hardware_instances:
+            hw_instance = hardware_instances[hw_name]
+            await hw_instance.update_all_sensors()
+    
+    # Then update all sensors in parallel to extract values
+    update_tasks = [sensor.update() for sensor in all_sensors]
+    await asyncio.gather(*update_tasks)
+    
+    # Group sensors by hardware class for printing
+    hw_sensors = {}
+    for sensor, (hw_name, metadata) in sensor_info.items():
+        if hw_name not in hw_sensors:
+            hw_sensors[hw_name] = []
+        hw_sensors[hw_name].append((sensor, metadata))
+    
+    # Print results
+    for hw_name in sorted(hw_sensors.keys()):
+        print(f"  {hw_name}:")
+        sensors = hw_sensors[hw_name]
+        
+        if not sensors:
+            print(f"    No sensors discovered")
+        else:
+            for sensor, metadata in sensors:
+                print(f"    {metadata.name} ({metadata.unique_id}):")
+                print(f"      State: {sensor.state}")
+                if sensor.attributes:
+                    print(f"      Attributes: {sensor.attributes}")
+        print()
+
+
 def commandline() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Home Assistan Linux Companion")
     parser.add_argument(
@@ -89,6 +167,11 @@ def commandline() -> argparse.Namespace:
         "--oauth",
         action="store_true",
         help="Run OAuth authentication flow and exit",
+    )
+    parser.add_argument(
+        "--sensor-states",
+        action="store_true",
+        help="Print current sensor states and exit",
     )
     args = parser.parse_args()
     return args
@@ -131,6 +214,11 @@ async def main():
         sys.exit(0)
 
     companion = Companion(config)  # Companion objet where configuration is stored
+
+    # Handle sensor states reporting if requested
+    if args.sensor_states:
+        await print_sensor_states(companion)
+        sys.exit(0)
     api = API(companion, storage)  # API client to send data to Home Assistant
 
     # Check if we have any authentication configured
@@ -146,13 +234,8 @@ async def main():
     # Initialize dbus connections
     bus = Dbus()
     await bus.init()
-    sensors = [sensor for sensor in Sensor.instances if sensor.config_name in companion.sensors]
-    # Apply custom sensor names
-    for sensor in sensors:
-        if sensor.config_name in companion.sensor_names:
-            sensor.name = companion.sensor_names[sensor.config_name]
     # Register sensors
-    sensor_manager = SensorManager(api, sensors, bus)
+    sensor_manager = SensorManager(api, bus)
 
     try:
         try:

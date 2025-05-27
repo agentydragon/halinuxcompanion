@@ -2,9 +2,9 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from aiohttp import ClientResponse, ClientSession, web
-from pydantic import BaseModel
 
 from .companion import Companion
+from .models import RegistrationData
 from .oauth import AuthenticationError, OAuthTokens, ensure_valid_oauth_token
 
 if TYPE_CHECKING:
@@ -17,22 +17,6 @@ SC_UNAUTHORIZED = 401
 SC_MOBILE_COMPONENT_NOT_LOADED = 404
 SC_INTEGRATION_DELETED = 410
 SESSION: Optional[ClientSession] = None
-
-
-
-
-class RegistrationData(BaseModel):
-    """Data returned from Home Assistant device registration."""
-
-    secret: Optional[str] = None
-    webhook_id: str
-    cloudhook_url: Optional[str] = ""
-    remote_ui_url: Optional[str] = ""
-
-    @property
-    def webhook_path(self) -> str:
-        """Get the webhook API path."""
-        return f"/api/webhook/{self.webhook_id}"
 
 
 class API:
@@ -96,7 +80,7 @@ class API:
 
     async def _ensure_authenticated(self) -> None:
         """Ensure we have valid authentication, refreshing OAuth token if needed.
-        
+
         Raises:
             AuthenticationError: If authentication fails
         """
@@ -140,18 +124,18 @@ class API:
         :param data: The data to send in the body of the request
         """
         self.counter += 1
-        logger.debug("Sending webhook POST %s type:%s ", self.counter, type)
+        logger.debug(f"Sending webhook POST {self.counter} {type=}")
 
         async with self.session.post(self.webhook_url, json=data) as res:
-            logger.debug("Recived response %s to request %s", res.status, self.counter)
+            logger.debug(f"Received response {res.status} to request {self.counter}")
 
             if logger.level == logging.DEBUG:
                 if res.status == SC_INVALID_JSON:
-                    logger.error("Invalid JSON %s", self.webhook_url)
+                    logger.error(f"Invalid JSON {self.webhook_url}")
                 if res.status == SC_MOBILE_COMPONENT_NOT_LOADED:
-                    logger.error("The mobile_app component has not ben loaded %s", self.webhook_url)
+                    logger.error(f"The mobile_app component has not been loaded {self.webhook_url}")
                 elif res.status == SC_INTEGRATION_DELETED:
-                    logger.error("The integration has been deleted, need to register again %s", self.webhook_url)
+                    logger.error(f"The integration has been deleted, need to register again {self.webhook_url}")
 
             return res
 
@@ -202,11 +186,11 @@ class API:
 
         return resp
 
-    def process_registration_data(self, data: dict) -> None:
+    def process_registration_data(self, data: RegistrationData) -> None:
         """Process the data returned from the registration endpoint
-        :param data: The data returned from the registration endpoint
+        :param data: The registration data
         """
-        self.registration = RegistrationData.model_validate(data)
+        self.registration = data
 
 
 class Server:
@@ -222,9 +206,9 @@ class Server:
         self.port = companion.computer_port  # TODO: Rename to listen_port
 
     async def start(self) -> None:
-        logger.info("Starting http server on %s:%s", self.host, self.port)
+        logger.info(f"Starting http server on {self.host}:{self.port}")
         runner = web.AppRunner(self.app)
         await runner.setup()
         site = web.TCPSite(runner, self.host, self.port)
         await site.start()
-        logger.info("Server started on %s:%s", self.host, self.port)
+        logger.info(f"Server started on {self.host}:{self.port}")

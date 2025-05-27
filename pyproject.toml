@@ -66,6 +66,9 @@ target-version = ["py310"]
 testpaths = ["tests", "halinuxcompanion"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
+markers = [
+    "requires_hardware: marks tests as requiring real hardware (deselect with '-m \"not requires_hardware\"')",
+]
 
 [tool.coverage.run]
 branch = true
@@ -95,5 +98,6 @@ deps =
     pytest
     pytest-asyncio
     pytest-cov
+    pytest-socket
 commands = pytest --cov=halinuxcompanion {posargs}
 """

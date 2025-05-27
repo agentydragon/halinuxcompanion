@@ -5,7 +5,7 @@ import pytest
 from halinuxcompanion.api import Server
 from halinuxcompanion.companion import CommandConfig, Companion
 from halinuxcompanion.notifier import Notifier
-from halinuxcompanion.sensors.status import Status
+from halinuxcompanion.sensors.status import StatusSensor
 
 
 def get_config() -> dict:
@@ -34,7 +34,7 @@ def setup_notifier() -> Notifier:
 
 
 def test_status_updater():
-    Status.updater()
+    StatusSensor.updater()
 
 
 @pytest.mark.asyncio

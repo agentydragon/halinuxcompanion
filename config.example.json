@@ -10,34 +10,45 @@
   "refresh_interval": 15,
   "loglevel": "INFO",
   "storage_backend": "auto",
-  "sensors": {
-    "cpu": {
+  "hardware": {
+    "battery": {
       "enabled": true,
-      "name": "CPU"
+      "implementation": "psutil"
+    },
+    "network": {
+      "enabled": true,
+      "interfaces": ["eth0", "wlan0"],
+      "show_status": true,
+      "show_counters": true,
+      "show_ip_addresses": false
+    },
+    "cpu": {
+      "enabled": true
     },
     "memory": {
-      "enabled": true,
-      "name": "Memory Load"
+      "enabled": true
     },
-    "uptime": {
+    "camera": {
+      "enabled": true
+    },
+    "lid": {
+      "enabled": true
+    },
+    "bluetooth": {
       "enabled": true,
-      "name": "Uptime"
+      "devices": [
+        "AA:BB:CC:DD:EE:FF",
+        "11:22:33:44:55:66"
+      ]
     },
     "status": {
-      "enabled": true,
-      "name": "Status"
+      "enabled": true
     },
-    "battery_level": {
-      "enabled": true,
-      "name": "Battery Level"
+    "uptime": {
+      "enabled": true
     },
-    "battery_state": {
-      "enabled": true,
-      "name": "Battery State"
-    },
-    "camera_state": {
-      "enabled": true,
-      "name": "Camera State"
+    "temperature": {
+      "enabled": true
     }
   },
   "services": {

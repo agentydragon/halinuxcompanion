@@ -14,6 +14,8 @@ from dbus_next.signature import Variant
 from halinuxcompanion.api import API, Server
 from halinuxcompanion.companion import CommandConfig, Companion
 from halinuxcompanion.dbus import Dbus
+from halinuxcompanion.dbus_models import (DBusNotification, NotificationHints,
+                                          UrgencyLevel)
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +23,13 @@ APP_NAME = "halinuxcompanion"
 HA = "Home Assistant"
 HA_ICON = files("halinuxcompanion.resources").joinpath("home-assistant-favicon.png")
 
-# Urgency levels
-# https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html#urgency-levels
-URGENCY_LOW = Variant("u", 0)
-URGENCY_NORMAL = Variant("u", 1)
-URGENCY_CRITICAL = Variant("u", 2)
-NOTIFY_LEVELS = {
-    "min": URGENCY_LOW,
-    "low": URGENCY_LOW,
-    "default": URGENCY_NORMAL,
-    "high": URGENCY_CRITICAL,
-    "max": URGENCY_CRITICAL,
+# Map Home Assistant importance levels to D-Bus urgency levels
+HA_TO_DBUS_URGENCY = {
+    "min": UrgencyLevel.LOW,
+    "low": UrgencyLevel.LOW,
+    "default": UrgencyLevel.NORMAL,
+    "high": UrgencyLevel.CRITICAL,
+    "max": UrgencyLevel.CRITICAL,
 }
 
 EVENTS_ENPOINT = {
@@ -40,14 +38,36 @@ EVENTS_ENPOINT = {
 }
 
 RESPONSES = {
-    "invalid_token": {
-        "error": "push_token does not match",
-        "errorMessage": "Sent token that does not match to halinuxcompanion",
-    },
     "ok": {"success": True, "message": "Notification queued"},
 }
 
 EMPTY_DICT = {}
+
+
+async def run_subprocess_with_logging(command: List[str], description: str) -> None:
+    """Run a subprocess and log any errors that occur.
+    
+    Args:
+        command: Command and arguments to execute
+        description: Description of what the command does for logging
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            logger.error(
+                f"Command {description} failed with exit code {process.returncode}. "
+                f"Command: {command}, stderr: {stderr.decode().strip()}"
+            )
+        else:
+            logger.debug(f"Command {description} completed successfully")
+    except Exception:
+        logger.error(f"Failed to execute command {description}: {command}", exc_info=True)
 
 
 class Notifier:
@@ -70,10 +90,6 @@ class Notifier:
     url_program: str
     commands: Dict[str, CommandConfig]
     ha_url: str
-
-    def __init__(self):
-        # The initialization is done in the init function
-        pass
 
     async def init(self, dbus: Dbus, api: API, webserverver: Server, companion: Companion) -> None:
         """Function to initialize the notifier.
@@ -121,42 +137,47 @@ class Notifier:
         """
         notification: dict = await request.json()
         push_token = notification.get("push_token")
-        logger.info("Received notification request:%s", notification)
+        logger.info(f"Received notification: {notification}")
 
         # Check if the notification is for this device
         if push_token != self.push_token:
-            logger.error(
-                "Notification push_token does not match: %s != %s",
-                push_token,
-                self.push_token,
+            logger.error(f"Notification push_token does not match: {push_token=} != {self.push_token=}")
+            return json_response(
+                {
+                    "error": "push_token does not match",
+                    "errorMessage": "Sent token that does not match to halinuxcompanion",
+                },
+                status=400,
             )
-            return json_response(RESPONSES["invalid_token"], status=400)
 
         # Transform the notification to the format dbus uses
-        notification = self.notification_transform(notification)
-
-        if notification["is_command"]:
+        transformed = self.notification_transform(notification)
+        
+        # Check if it's a command (returns dict) or regular notification (returns DBusNotification)
+        if isinstance(transformed, dict) and transformed.get("is_command"):
             command_id = notification["message"]
             command = self.commands.get(command_id)
-            if command:
-                # It's not a notification, but a command, therefore no dbus_notify
-                logger.info("Received notification command: id:%s name:%s", command_id, command.name)
-                logger.info("Scheduling notification command: %s", command.command)
-                asyncio.create_task(
-                    asyncio.create_subprocess_exec(
-                        *command.command,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.DEVNULL,
-                    )
-                )
-            else:
+            if not command:
                 # Got notificatoin command but none defined
-                logger.error(
-                    "Received notification command %s, but no command is defined",
-                    command_id,
+                logger.error(f"Received notification command {command_id}, but no command is defined")
+                return json_response(
+                    {
+                        "error": "command_not_found",
+                        "errorMessage": f"Command {command_id} not found",
+                    },
+                    status=404,
                 )
+            # It's not a notification, but a command, therefore no dbus_notify
+            logger.info(f"Executing notification command: {command_id}, name={command.name}")
+            asyncio.create_task(
+                run_subprocess_with_logging(
+                    command.command,
+                    f"notification command '{command.name}' (id: {command_id})"
+                )
+            )
         else:
-            asyncio.create_task(self.dbus_notify(self.notification_transform(notification)))
+            # It's a DBusNotification object
+            asyncio.create_task(self.dbus_notify(transformed, notification))
 
         return json_response(RESPONSES["ok"], status=201)
 
@@ -171,72 +192,71 @@ class Notifier:
         """
         endpoint = EVENTS_ENPOINT[event]
 
-        if notification:
-            data = {
-                "title": notification.get("title", ""),
-                "message": notification.get("message", ""),
-                **notification.get("event_actions", {}),
-                **notification["data"],
-            }
-            # Replaced by event_actions
-            if "actions" in data:
-                del data["actions"]
+        if not notification:
+            return False
+        data = {
+            "title": notification.get("title", ""),
+            "message": notification.get("message", ""),
+            **notification.get("event_actions", {}),
+            **notification["data"],
+        }
+        # Replaced by event_actions
+        if "actions" in data:
+            del data["actions"]
 
-            if event == "action":
-                data["action"] = action
+        if event == "action":
+            data["action"] = action
 
-            try:
-                res = await self.api.post(endpoint, json.dumps(data))
-                logger.info(
-                    "Sent Home Assistant event:%s data:%s response:%s",
-                    endpoint,
-                    data,
-                    res.status,
-                )
-                return True
-            except ClientError as e:
-                logger.error("Error sending Home Assistant event: %s", e)
-
+        try:
+            res = await self.api.post(endpoint, json.dumps(data))
+            logger.info(f"Sent Home Assistant {event=}, {endpoint=}, response={res.status}")
+            return True
+        except ClientError:
+            logger.error(f"Error sending Home Assistant event")
         return False
 
-    def notification_transform(self, notification: dict) -> dict:
+    def notification_transform(self, notification: dict) -> DBusNotification | dict:
         """Function to convert a Home Assistant notification to a dbus notification.
         This is done in a best effort manner, as the homeassistant notification format can't be fully translated.
         This function mutates the notification dict.
 
         :param notification: The notification to convert (mutated)
-        :return: The mutated notification passed with the necessary fields to invoke a dbus notification.
+        :return: DBusNotification for regular notifications, dict for commands
         """
         # Add the data, avoids the need to check (branching) ahead
         data: dict = notification.setdefault("data", {})
         tag: str = data.setdefault("tag", "")
-        actions: List[str] = ["default", "Default"]
-        hints: Dict[str, Variant] = {}
-        icon: str = HA_ICON  # Icon path
-        timeout: int = -1  # -1 means notification server decides how long to show
-        replace_id: int = 0
+        
+        # Check if this is a command notification
         if notification["message"].startswith("command_"):
-            # This is a command notification, short circuit the rest of the logic, no need to format the notification
-            # since it won't be stored nor emitted by dbus.
+            # This is a command notification, short circuit the rest of the logic
             notification["is_command"] = True
             return notification
 
-        elif data:
+        # Build notification components
+        actions: List[str] = ["default", "Default"]
+        hints = NotificationHints()
+        timeout: int = -1  # -1 means notification server decides how long to show
+        replace_id: int = 0
+        
+        if data:
             # Actions
-            # Home Assisnant actions require seome transformation
+            # Home Assistant actions require some transformation
             # https://companion.home-assistant.io/docs/notifications/actionable-notifications
             # https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html#basic-design
 
             # Dbus notification structure [id, name, id, name, ...]
-            event_actions = {}  # Format the actions as necessary for on_close an on_action events
+            event_actions = {}  # Format the actions as necessary for on_close and on_action events
             counter = 1
             for a in data.get("actions", []):
                 actions.extend([a["action"], a["title"]])
                 # This is necessary when sending event data on_closed, on_action
                 event_actions[f"action_{counter}_key"] = a["action"]
                 event_actions[f"action_{counter}_title"] = a["title"]
+                counter += 1
 
             notification["event_actions"] = event_actions
+
             # Uri for the default action
             uri = data.get("url", "") or data.get("clickAction", "")
             # check if uri starts with /lovelace or lovelace using regex
@@ -248,18 +268,16 @@ class Notifier:
             # Importance -> Urgency
             # https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html#urgency-levels
             # https://companion.home-assistant.io/docs/notifications/notifications-basic/#notification-channel-importance
-            urgency = URGENCY_NORMAL  # Normal level
             if "importance" in data:
-                urgency = NOTIFY_LEVELS.get(data["importance"], URGENCY_NORMAL)
-            hints["urgency"] = urgency
+                hints.urgency = HA_TO_DBUS_URGENCY.get(data["importance"], UrgencyLevel.NORMAL)
 
-            # Timeout, convert milliseconds to seconds
+            # Timeout, convert seconds to milliseconds
             if "timeout" in data:
                 try:
                     timeout = int(float(data["timeout"]) * 1000)
                 except ValueError:
-                    logger.warning(f"Invalid {timeout=!r}, using default 5 s")
-                    timeout = 5_000
+                    logger.warning(f"Invalid timeout={data['timeout']!r}, using default")
+                    timeout = -1
 
             # Replaces id:
             # Using the notification tag, check if it should replace an existing notification
@@ -267,52 +285,62 @@ class Notifier:
 
             # Dismiss/clear notification
             if notification["message"] == "clear_notification":
-                logger.info("Clearing notification: %s", notification)
+                logger.info(f"Clearing {notification = }")
                 # Replace the notification and hide it in 1 millisecond, workaround for dbus notifications
                 timeout = 1
 
-        notification.update(
-            {
-                "title": notification.get("title", HA),
-                "actions": actions,
-                "hints": hints,
-                "timeout": timeout,
-                "icon": icon,  # TODO: Support custom icons
-                "replace_id": replace_id,
-                "is_command": False,
-            }
+        # Store additional data in notification dict for later use
+        notification.update({
+            "data": data,
+            "is_command": False,
+        })
+
+        # Create DBusNotification
+        dbus_notification = DBusNotification(
+            app_name=APP_NAME,
+            replaces_id=replace_id,
+            app_icon=str(HA_ICON),
+            summary=notification.get("title", HA),
+            body=notification.get("message", ""),
+            actions=actions,
+            hints=hints,
+            expire_timeout=timeout,
         )
-        logger.debug("Converted notification: %s", notification)
+        
+        logger.debug(f"Converted to DBusNotification: {dbus_notification}")
+        return dbus_notification
 
-        return notification
-
-    async def dbus_notify(self, notification: dict) -> None:
+    async def dbus_notify(self, dbus_notification: DBusNotification, original_notification: dict) -> None:
         """Function to send a native dbus notification.
         According to the following link:
             Section  org.freedesktop.Notifications.Notify
             https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html#protocol
 
-        :param notification: The notification to send, at this point it should be transformed to the format dbus uses,
-            from the format Home Assistant sends.
+        :param dbus_notification: The DBusNotification object to send
+        :param original_notification: The original notification dict for history tracking
         :return: None
         """
         logger.info("Sending dbus notification")
+        
+        # Convert hints to D-Bus format
+        hints_dict = dbus_notification.hints.to_dbus_dict()
+        
         id = await self.interface.call_notify(
-            APP_NAME,
-            notification["replace_id"],
-            str(notification["icon"]),
-            notification["title"],
-            notification["message"],
-            notification["actions"],
-            notification["hints"],
-            notification["timeout"],
+            dbus_notification.app_name,
+            dbus_notification.replaces_id,
+            dbus_notification.app_icon,
+            dbus_notification.summary,
+            dbus_notification.body,
+            dbus_notification.actions,
+            hints_dict,
+            dbus_notification.expire_timeout,
         )
-        logger.info("Dbus notification dispatched id:%s", id)
+        logger.info(f"Dbus notification dispatched {id=}")
 
         # History management: Add the new notification, and remove the oldest one.
         # Storage
-        self.history[id] = notification
-        tag: str = notification["data"].get("tag", None)
+        self.history[id] = original_notification
+        tag: str = original_notification["data"].get("tag", None)
         if tag:
             self.tagtoid[tag] = id
 
@@ -330,29 +358,28 @@ class Notifier:
         :param id: The dbus id of the notification
         :param action: The action that was invoked
         """
-        logger.info("Notification action dbus event received: id:%s, action:%s", id, action)
-        notification: dict = self.history.get(id, {})
-        if not notification:
-            logger.info("No notification found for id:%s, doesn't belong to this applicaton", id)
+        logger.info(f"Notification action dbus event received: {id=}, {action=}")
+        if not (notification := self.history.get(id)):
+            logger.info(f"No notification found for {id=}, doesn't belong to this application")
             return
 
-        actions: List[dict] = notification["data"].get("actions", {})
-        if actions or action == "default":
-            uri: str
-            emit_event: bool = True
+        if action == "default":
+            uri = notification.get("default_action_uri")
+        elif actions := notification["data"].get("actions", []):
             # actions is a list of dictionaries {"action": "turn_off", "title": "Turn off House", "uri": "http://..."}
-            if action == "default":
-                uri = notification.get("default_action_uri", "")
-                emit_event = False
-            else:
-                uri = next(filter(lambda dic: dic["action"] == action, actions)).get("uri", "")
+            uri = next(filter(lambda d: d["action"] == action, actions)).get("uri")
+            asyncio.create_task(self.ha_event_trigger("action", action, notification))
+        else:
+            return  # No action to perform
 
-            if uri.startswith("http") and self.url_program:
-                asyncio.create_task(asyncio.create_subprocess_exec(self.url_program, uri))
-                logger.info(f"Launched {action=} {uri=}", action, uri)
-
-            if emit_event:
-                asyncio.create_task(self.ha_event_trigger("action", action, notification))
+        if uri and uri.startswith("http") and self.url_program:
+            logger.info(f"Launching {action=} {uri=}")
+            asyncio.create_task(
+                run_subprocess_with_logging(
+                    [self.url_program, uri],
+                    f"URL handler for action '{action}' with URI '{uri}'"
+                )
+            )
 
     async def on_close(self, id: int, reason: str) -> None:
         """Function to handle the dbus notification close event
@@ -362,8 +389,7 @@ class Notifier:
         :param reason: The reason the notification was closed
         """
         logger.info(f"Notification closed dbus event received: {id=}, {reason=}")
-        notification = self.history.get(id, {})
-        if notification:
+        if notification := self.history.get(id):
             asyncio.create_task(self.ha_event_trigger(event="closed", notification=notification))
         else:
             logger.info(f"No notification found for {id=}, doesn't belong to this applicaton")
