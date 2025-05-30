@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 SC_REGISTER_SENSOR = 301
 
 # Map of hardware config fields to hardware classes
-# Status sensor doesn't fit the model - it uses D-Bus signals
 HARDWARE_CLASSES = {
     hw_class.config_field: hw_class  # type: ignore[attr-defined]
     for hw_class in [
