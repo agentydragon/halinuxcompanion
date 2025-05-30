@@ -10,3 +10,5 @@ halinuxcompanion.egg-info
 
 references/android
 references/home-assistant-core
+
+.claude/settings.local.json
