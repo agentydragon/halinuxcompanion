@@ -232,7 +232,7 @@ class Companion:
         logger.info("Checking if device is already registered")
         if self.state.registration_data:
             api.registration = self.state.registration_data
-            res = await api.webhook_post("get_config", data={"type": "get_config"})
+            res = await api.webhook_post({"type": "get_config"})
             if res.status == 200:
                 return self.state.registration_data
             if res.status != SC_INTEGRATION_DELETED:

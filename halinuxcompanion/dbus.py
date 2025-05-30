@@ -66,6 +66,15 @@ INTERFACES = {
             path="/org/gnome/ScreenSaver",
             signals={"on_active_changed": GNOME_SCREENSAVER_ON_ACTIVE_CHANGED},
         ),
+        DbusInterface(
+            type="session",
+            service=NOTIFICATIONS_INTERFACE,
+            path="/org/freedesktop/Notifications",
+            signals={
+                "on_action_invoked": NOTIFICATION_ON_ACTION_INVOKED,
+                "on_notification_closed": NOTIFICATION_ON_NOTIFICATION_CLOSED,
+            },
+        ),
     ]
 }
 
@@ -88,9 +97,8 @@ class Dbus:
         try:
             introspection = await bus.introspect(i.service, i.path)
             proxy = bus.get_proxy_object(i.service, i.path, introspection)
-            return proxy.get_interface(
-                i.interface or i.service
-            )  # TODO :deduple fallback to service if no interface specified
+            # TODO :deduple fallback to service if no interface specified
+            return proxy.get_interface(i.interface or i.service)
         except DBusError:
             logger.warning(f"Failed to get D-Bus interface {i.interface} at {i.path}")
             return None
@@ -110,9 +118,12 @@ class Dbus:
             if signal_alias in interface.signals.values():
                 iface_name = interface.interface
                 signal_name = interface.signals[signal_alias]
+                break
+        else:
+            logger.warning(f"Unknown signal alias: {signal_alias}")
+            return
 
-        iface = await self.get_interface(iface_name)
-        if iface is None:
+        if not (iface := await self.get_interface(iface_name)):
             logger.warning(
                 f"Could not register signal callback for interface:{iface_name}, signal:{signal_name}"
             )

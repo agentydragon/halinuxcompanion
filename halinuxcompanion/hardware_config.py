@@ -1,6 +1,7 @@
 """Hierarchical hardware configuration models."""
 
-from typing import Dict, List, Literal, Optional
+from typing import List, Literal, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -93,116 +94,12 @@ class TemperatureConfig(HardwareClassConfig):
 class HardwareConfig(BaseModel):
     """Root hardware configuration containing all hardware classes."""
 
-    battery: Optional[BatteryConfig] = None
-    network: Optional[NetworkConfig] = None
-    cpu: Optional[CPUConfig] = None
-    memory: Optional[MemoryConfig] = None
-    camera: Optional[CameraConfig] = None
-    lid: Optional[LidConfig] = None
-    bluetooth: Optional[BluetoothConfig] = None
-    uptime: Optional[UptimeConfig] = None
-    temperature: Optional[TemperatureConfig] = None
-
-
-# Sensor definitions for each hardware class
-BATTERY_SENSORS: Dict[str, SensorInfo] = {
-    "charge_level": SensorInfo(
-        name="Battery Level",
-        unit="%",
-        device_class="battery",
-        state_class="measurement",
-    ),
-    "charging_state": SensorInfo(name="Battery State", icon="mdi:battery"),
-    "time_to_empty": SensorInfo(
-        name="Time to Empty",
-        unit="s",
-        device_class="duration",
-        state_class="measurement",
-    ),
-    "time_to_full": SensorInfo(
-        name="Time to Full",
-        unit="s",
-        device_class="duration",
-        state_class="measurement",
-    ),
-    "temperature": SensorInfo(
-        name="Battery Temperature",
-        unit="°C",
-        device_class="temperature",
-        state_class="measurement",
-    ),
-    "voltage": SensorInfo(
-        name="Battery Voltage",
-        unit="V",
-        device_class="voltage",
-        state_class="measurement",
-    ),
-    "charge_rate": SensorInfo(
-        name="Charge Rate", unit="W", device_class="power", state_class="measurement"
-    ),
-    "discharge_rate": SensorInfo(
-        name="Discharge Rate", unit="W", device_class="power", state_class="measurement"
-    ),
-    "health": SensorInfo(name="Battery Health", unit="%", state_class="measurement"),
-    "charge_cycles": SensorInfo(name="Charge Cycles", state_class="total_increasing"),
-    "energy": SensorInfo(
-        name="Battery Energy",
-        unit="Wh",
-        device_class="energy_storage",
-        state_class="measurement",
-    ),
-    "energy_full": SensorInfo(
-        name="Battery Energy Full",
-        unit="Wh",
-        device_class="energy_storage",
-        state_class="measurement",
-    ),
-}
-
-NETWORK_SENSORS: Dict[str, SensorInfo] = {
-    "status": SensorInfo(
-        type="binary_sensor", name="Status", device_class="connectivity"
-    ),
-    "tx_bytes": SensorInfo(
-        name="TX Bytes",
-        unit="B",
-        device_class="data_size",
-        state_class="total_increasing",
-    ),
-    "rx_bytes": SensorInfo(
-        name="RX Bytes",
-        unit="B",
-        device_class="data_size",
-        state_class="total_increasing",
-    ),
-    "ipv4_address": SensorInfo(name="IPv4 Address", icon="mdi:ip-network"),
-    "ipv6_address": SensorInfo(name="IPv6 Address", icon="mdi:ip-network"),
-}
-
-CPU_SENSORS: Dict[str, SensorInfo] = {
-    "usage_percent": SensorInfo(name="CPU Usage", unit="%", state_class="measurement"),
-    "frequency": SensorInfo(
-        name="CPU Frequency",
-        unit="MHz",
-        device_class="frequency",
-        state_class="measurement",
-    ),
-}
-
-MEMORY_SENSORS: Dict[str, SensorInfo] = {
-    "usage_percent": SensorInfo(
-        name="Memory Usage", unit="%", state_class="measurement"
-    ),
-    "used": SensorInfo(
-        name="Memory Used",
-        unit="B",
-        device_class="data_size",
-        state_class="measurement",
-    ),
-    "available": SensorInfo(
-        name="Memory Available",
-        unit="B",
-        device_class="data_size",
-        state_class="measurement",
-    ),
-}
+    battery: BatteryConfig = BatteryConfig()
+    network: NetworkConfig = NetworkConfig()
+    cpu: CPUConfig = CPUConfig()
+    memory: MemoryConfig = MemoryConfig()
+    camera: CameraConfig = CameraConfig()
+    lid: LidConfig = LidConfig()
+    bluetooth: BluetoothConfig = BluetoothConfig()
+    uptime: UptimeConfig = UptimeConfig()
+    temperature: TemperatureConfig = TemperatureConfig()

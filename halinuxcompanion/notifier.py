@@ -35,7 +35,7 @@ HA_TO_DBUS_URGENCY = {
     "max": UrgencyLevel.CRITICAL,
 }
 
-EVENTS_ENPOINT = {
+EVENTS_ENDPOINT = {
     "closed": "/api/events/mobile_app_notification_cleared",
     "action": "/api/events/mobile_app_notification_action",
 }
@@ -132,9 +132,7 @@ class Notifier:
         :param dbus: The Dbus class abstraction
         """
         # Get the interface
-        interface = await dbus.get_interface("org.freedesktop.Notifications")
-
-        if interface is None:
+        if not (interface := await dbus.get_interface("org.freedesktop.Notifications")):
             logger.warning(
                 "Could not find org.freedesktop.Notifications interface, disabling notification support."
             )
@@ -217,7 +215,7 @@ class Notifier:
         :param notification: The notification dictionary
         :return: True if the event was triggered, False otherwise
         """
-        endpoint = EVENTS_ENPOINT[event]
+        endpoint = EVENTS_ENDPOINT[event]
 
         if not notification:
             return False

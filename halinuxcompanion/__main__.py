@@ -6,7 +6,6 @@ import textwrap
 from pathlib import Path
 from typing import Dict, List
 
-import pint
 import toml
 from xdg_base_dirs import xdg_config_home, xdg_state_home
 
@@ -19,7 +18,6 @@ from .oauth import OAuthFlow
 from .secret_storage.file import FileSecretStorage, check_file_permissions
 from .secrets import LibSecretStorage, SecretStorageBackend
 from .sensor import HARDWARE_CLASSES, SensorManager
-from .units import format_quantity
 
 # set logging level using and environment variable
 logger = logging.getLogger("halinuxcompanion")
@@ -51,21 +49,6 @@ def get_default_config_path() -> Path:
 
 
 def sensor_line(sensor):
-    metadata = sensor.get_metadata()
-    if sensor.sensor_type == "binary_sensor":
-        state_str = "ON" if sensor.state else "OFF"
-    elif sensor.state is None:
-        state_str = "N/A"
-    elif isinstance(sensor.state, (int, float)):
-        # print(sensor, sensor.state, sensor.get_metadata(), sensor.sensor_type)
-        state_str = format_quantity(
-            pint.Quantity(sensor.state, metadata.unit_of_measurement)
-        )
-    elif metadata.unit_of_measurement:
-        state_str = f"{sensor.state} {metadata.unit_of_measurement}"
-    else:
-        state_str = str(sensor.state)
-
     # Format sensor type indicator
     sensor_icons = {
         "temperature": "🌡️",
@@ -82,7 +65,7 @@ def sensor_line(sensor):
     }
     # Print sensor info with proper indentation based on whether we have multiple pieces
     text = [
-        f"{sensor_icons.get(metadata.device_class, '📊')} {metadata.name} {state_str}"
+        f"{sensor_icons.get(sensor.device_class, '📊')} {sensor.name} {sensor.state_str()}"
     ]
     # Print attributes if present
     if sensor.attributes:
@@ -157,9 +140,7 @@ async def cleanup_sensors(companion: Companion) -> None:
         if not hw_config or not hw_config.enabled:
             continue
         discovered = await hw_class(hw_config).discover_sensors()  # type: ignore[abstract]
-        current_sensor_ids.update(
-            sensor.get_metadata().unique_id for sensor in discovered
-        )
+        current_sensor_ids.update(sensor.unique_id for sensor in discovered)
 
     print("\n=== Sensor Cleanup Tool ===\n")
     print(f"Currently active sensors: {len(current_sensor_ids)}")
@@ -228,8 +209,7 @@ def commandline() -> argparse.Namespace:
         action="store_true",
         help="List and optionally delete sensors that are no longer being updated",
     )
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 async def main():
@@ -297,7 +277,7 @@ async def main():
     bus = Dbus()
     await bus.init()
     # Register sensors
-    sensor_manager = SensorManager(api, bus)
+    sensor_manager = SensorManager(api=api, dbus=bus)
 
     try:
         await sensor_manager.discover_and_register_sensors()

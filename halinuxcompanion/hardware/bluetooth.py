@@ -53,54 +53,41 @@ class BluetoothPiece(HardwarePiece):
 
     async def update(self) -> None:
         """Update all sensors for this Bluetooth device."""
-        data = await self._fetch_sensor_data()
+        # Build attributes - only include device_name if we have it
+        attributes = {"device_address": self.device_address}
+        if self.device_name:
+            attributes["device_name"] = self.device_name
+        for sensor in self.get_sensors():
+            sensor.attributes = attributes
 
+        # If device is not visible, update sensors to reflect that
         # Handle case where data is None
+        data = await self._fetch_sensor_data()
         if data is None:
             # Update all sensors to unavailable state
             for sensor in self.get_sensors():
                 sensor.state = None
-                sensor.attributes = {"device_address": self.device_address}
             return
 
-        # If device is not visible, update sensors to reflect that
         if not data.visible:
-            # Build attributes - only include device_name if we have it
-            attributes = {"device_address": self.device_address}
-            if self.device_name:
-                attributes["device_name"] = self.device_name
-
             # Update sensors with null/false values
             if self.visible_sensor:
                 self.visible_sensor.state = False
-                self.visible_sensor.attributes = attributes
 
             if self.connected_sensor:
                 self.connected_sensor.state = False
-                self.connected_sensor.attributes = attributes
 
             # Set other sensors to None/unknown when not visible
             if self.battery_sensor:
                 self.battery_sensor.state = None
-                self.battery_sensor.attributes = attributes
 
             if self.volume_sensor:
                 self.volume_sensor.state = None
-                self.volume_sensor.attributes = attributes
 
             if self.playback_state_sensor:
                 self.playback_state_sensor.state = "unknown"
-                self.playback_state_sensor.attributes = attributes
 
             return
-
-        # Device is visible - update with actual data
-        # Common attributes for all sensors
-        attributes = {
-            "device_address": data.device_address,
-        }
-        if data.device_name:
-            attributes["device_name"] = data.device_name
 
         # Update all sensors that exist
         for sensor, value in [  # type: ignore[assignment]
@@ -112,7 +99,6 @@ class BluetoothPiece(HardwarePiece):
         ]:
             if sensor:
                 sensor.state = value
-                sensor.attributes = attributes
 
     def get_sensors(self) -> List[HardwareSensor]:
         """Get all sensors for this device."""
@@ -135,56 +121,53 @@ class BluetoothPiece(HardwarePiece):
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         path, interfaces = await self._find_device(bus)
 
-        if path and interfaces:
-            # Device is visible
-            # Get device properties
-            device_props = interfaces.get("org.bluez.Device1", {})
-
-            # Update device name if available (using walrus operator)
-            if name_variant := (device_props.get("Name") or device_props.get("Alias")):
-                if name := (
-                    name_variant.value
-                    if isinstance(name_variant, Variant)
-                    else name_variant
-                ):
-                    self.device_name = name
-
-            # Connection status
-            connected = device_props.get("Connected")
-            connected_bool = (
-                connected.value
-                if isinstance(connected, Variant)
-                else bool(connected)
-                if connected is not None
-                else False
-            )
-
-            # Battery level - use the working pattern
-            battery_level = await self._read_battery(bus, path, interfaces)
-
-            # Try to get volume via PulseAudio/PipeWire
-            volume = await self._get_volume()
-
-            # Try to get playback state via MPRIS2
-            playback_state = await self._get_playback_state()
-
-            return BluetoothData(
-                visible=True,
-                connected=connected_bool,
-                device_name=self.device_name,
-                device_address=self.device_address,
-                battery_level=battery_level,
-                volume=volume,
-                playback_state=playback_state,
-            )
-        else:
-            # Device not visible
+        if not path or not interfaces:
             return BluetoothData(
                 visible=False,
                 connected=False,
                 device_name=self.device_name,
                 device_address=self.device_address,
             )
+        # Get device properties
+        device_props = interfaces.get("org.bluez.Device1", {})
+
+        # Update device name if available (using walrus operator)
+        if name_variant := (device_props.get("Name") or device_props.get("Alias")):
+            if name := (
+                name_variant.value
+                if isinstance(name_variant, Variant)
+                else name_variant
+            ):
+                self.device_name = name
+
+        # Connection status
+        connected = device_props.get("Connected")
+        connected_bool = (
+            connected.value
+            if isinstance(connected, Variant)
+            else bool(connected)
+            if connected is not None
+            else False
+        )
+
+        # Battery level - use the working pattern
+        battery_level = await self._read_battery(bus, path, interfaces)
+
+        # Try to get volume via PulseAudio/PipeWire
+        volume = await self._get_volume()
+
+        # Try to get playback state via MPRIS2
+        playback_state = await self._get_playback_state()
+
+        return BluetoothData(
+            visible=True,
+            connected=connected_bool,
+            device_name=self.device_name,
+            device_address=self.device_address,
+            battery_level=battery_level,
+            volume=volume,
+            playback_state=playback_state,
+        )
 
     async def _find_device(
         self, bus: MessageBus
@@ -198,15 +181,13 @@ class BluetoothPiece(HardwarePiece):
         target_mac = self.device_address.upper()
 
         for path, ifaces in objs.items():
-            dev = ifaces.get("org.bluez.Device1")
-            if dev:
-                addr = dev.get("Address")
-                if (
-                    addr
-                    and (addr.value if isinstance(addr, Variant) else addr).upper()
-                    == target_mac
-                ):
-                    return path, ifaces
+            if (
+                (dev := ifaces.get("org.bluez.Device1"))
+                and (addr := dev.get("Address"))
+                and (addr.value if isinstance(addr, Variant) else addr).upper()
+                == target_mac
+            ):
+                return path, ifaces
 
         return None, None
 
@@ -229,7 +210,6 @@ class BluetoothPiece(HardwarePiece):
             return (
                 battery_pct.value if isinstance(battery_pct, Variant) else battery_pct
             )
-
         return None
 
     async def _get_volume(self) -> Optional[int]:
@@ -315,32 +295,30 @@ class BluetoothProvider(HardwareProvider):
         mgr = om.get_interface("org.freedesktop.DBus.ObjectManager")
 
         objs = await mgr.call_get_managed_objects()
-
-        for path, ifaces in objs.items():
+        for _, ifaces in objs.values():
             dev = ifaces.get("org.bluez.Device1")
-            if dev:
-                addr_variant = dev.get("Address")
-                name_variant = dev.get("Name") or dev.get("Alias")
-
-                if addr_variant:
-                    addr = (
-                        addr_variant.value
-                        if isinstance(addr_variant, Variant)
-                        else addr_variant
-                    )
-                    name = (
-                        name_variant.value
-                        if isinstance(name_variant, Variant)
-                        else name_variant
-                        if name_variant
-                        else addr
-                    )
-
-                    if addr in self.whitelisted_devices:
-                        hardware_id = addr.replace(":", "")
-                        piece = BluetoothPiece(hardware_id, addr, name)
-                        pieces.append(piece)
-                        logger.debug(f"Discovered Bluetooth device: {name} ({addr})")
+            if not dev:
+                continue
+            addr_variant = dev.get("Address")
+            name_variant = dev.get("Name") or dev.get("Alias")
+            if not addr_variant:
+                continue
+            addr = (
+                addr_variant.value
+                if isinstance(addr_variant, Variant)
+                else addr_variant
+            )
+            name = (
+                name_variant.value
+                if isinstance(name_variant, Variant)
+                else name_variant
+                if name_variant
+                else addr
+            )
+            if addr in self.whitelisted_devices:
+                hardware_id = addr.replace(":", "")
+                pieces.append(BluetoothPiece(hardware_id, addr, name))
+                logger.debug(f"Discovered Bluetooth device: {name} ({addr})")
 
         if pieces:
             logger.debug(f"Discovered {len(pieces)} whitelisted Bluetooth devices")
@@ -363,10 +341,7 @@ class BluetoothHardwareClass(PerPieceUpdateMixin, HardwareClass):
         self._all_sensors: List[HardwareSensor] = []
 
     async def get_provider(self) -> HardwareProvider:
-        """Get the hardware provider."""
-        if not self._provider:
-            self._provider = BluetoothProvider(self.config.devices)
-        return self._provider
+        return BluetoothProvider(self.config.devices)
 
     async def discover_sensors(self) -> List[HardwareSensor]:
         """Create sensors for all configured Bluetooth devices."""

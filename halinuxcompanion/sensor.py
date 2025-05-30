@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from aiohttp import ClientError
@@ -7,7 +8,6 @@ from aiohttp import ClientError
 from halinuxcompanion.api import API
 from halinuxcompanion.dbus import Dbus, register_sensor_dbus_handlers
 from halinuxcompanion.hardware import (
-    BatteryHardwareClass,
     BluetoothHardwareClass,
     CameraHardwareClass,
     CPUHardwareClass,
@@ -17,8 +17,8 @@ from halinuxcompanion.hardware import (
     TemperatureHardwareClass,
     UptimeHardwareClass,
 )
-from halinuxcompanion.hardware_base import HardwareClass
-from halinuxcompanion.sensor_base import BaseSensor
+from halinuxcompanion.hardware.battery import BatteryHardwareClass
+from halinuxcompanion.hardware_base import HardwareClass, HardwareSensor
 
 if TYPE_CHECKING:
     from halinuxcompanion.api import API
@@ -46,18 +46,15 @@ HARDWARE_CLASSES = {
 }
 
 
+@dataclass
 class SensorManager:
     """Manages sensors registration, and updates to Home Assistant"""
 
     api: API
-    update_counter: int = 0
-    sensors: list[BaseSensor] = []
     dbus: Dbus
-    hardware_instances: dict[str, "HardwareClass"] = {}
-
-    def __init__(self, api: API, dbus: Dbus) -> None:
-        self.api = api
-        self.dbus = dbus
+    update_counter: int = 0
+    sensors: list[HardwareSensor] = field(default_factory=list)
+    hardware_instances: list["HardwareClass"] = field(default_factory=list)
 
     async def update_sensors(self) -> bool:
         """Update all sensors with Home Assistant
@@ -71,65 +68,58 @@ class SensorManager:
         self.update_counter += 1
 
         # Update all hardware classes (which update their sensors directly)
-        hw_update_tasks = []
-        for hw_instance in self.hardware_instances.values():
-            hw_update_tasks.append(hw_instance.update_all_sensors())
+        hw_update_tasks = [
+            hw_instance.update_all_sensors() for hw_instance in self.hardware_instances
+        ]
         await asyncio.gather(*hw_update_tasks, return_exceptions=True)
 
-        # Build update payload
-        updates = [
-            {
-                "attributes": sensor.attributes,
-                "icon": sensor.get_metadata().icon,
-                "state": sensor.state,
-                "type": sensor.sensor_type,
-                "unique_id": sensor.get_metadata().unique_id,
-            }
-            for sensor in self.sensors
-        ]
-
-        data = {
-            "type": "update_sensor_states",
-            "data": updates,
-        }
-
-        all_names = [s.get_metadata().unique_id for s in self.sensors]
         prefix = f"Sensors update {self.update_counter}"
-        logger.info(f"{prefix} with sensors: {all_names}")
-        logger.debug(f"{prefix} with {data=}")
+        logger.info(
+            f"{prefix} with sensors: {' '.join(s.unique_id for s in self.sensors)}"
+        )
 
         try:
-            res = await self.api.webhook_post("update_sensors", data=data)
-            if res.ok or res.status == SC_REGISTER_SENSOR:
-                logger.info(f"{prefix} successful")
-                return True
-            else:
-                logger.error(f"{prefix} failed with {res.status=}")
+            res = await self.api.webhook_post(
+                {
+                    "type": "update_sensor_states",
+                    "data": [
+                        {
+                            "attributes": sensor.attributes,
+                            "icon": sensor.sensor_info.icon,
+                            "state": sensor.state,
+                            "type": sensor.sensor_info.type,
+                            "unique_id": sensor.unique_id,
+                        }
+                        for sensor in self.sensors
+                    ],
+                }
+            )
         except ClientError as e:
             logger.error(f"{prefix} failed with {e=}")
-
+            return False
+        if res.ok or res.status == SC_REGISTER_SENSOR:
+            logger.info(f"{prefix} successful")
+            return True
+        logger.error(f"{prefix} failed with {res.status=}")
         return False
 
     async def discover_and_register_sensors(self) -> None:
         """Discover and register sensors."""
         # Get sensor configs from companion
-        companion = getattr(self.api, "companion", None)
-        if not companion:
+        if not (companion := getattr(self.api, "companion", None)):
             logger.error("No companion object found in API")
             return
 
         # Discover sensors for each enabled hardware class
         for hw_name, hw_class in HARDWARE_CLASSES.items():
-            hw_config = getattr(companion.hardware, hw_name, None)
-            if not hw_config or not hw_config.enabled:
+            hw_config = getattr(companion.hardware, hw_name)
+            if not hw_config.enabled:
                 continue
             logger.info(f"Discovering {hw_name} sensors...")
-            hw_instance = hw_class(hw_config)  # type: ignore[abstract]
-            self.hardware_instances[hw_name] = hw_instance
-            discovered = await hw_instance.discover_sensors()
-            for sensor in discovered:
-                self.sensors.append(sensor)  # type: ignore[arg-type]
-                logger.info(f"Discovered sensor: {sensor.get_metadata().unique_id}")
+            self.hardware_instances.append(hw_class(hw_config))  # type: ignore[abstract]
+
+        for hw_instance in self.hardware_instances:
+            self.sensors.extend(await hw_instance.discover_sensors())
 
         if not self.sensors:
             logger.warning(
@@ -137,14 +127,20 @@ class SensorManager:
             )
             return
 
-        logger.info(f"Total sensors discovered: {len(self.sensors)}")
+        logger.info(
+            f"Discovered {len(self.sensors)} sensors: {' '.join(sensor.unique_id for sensor in self.sensors)}"
+        )
 
         # Register all discovered sensors
         await self._register_sensors()
 
         # Register D-Bus handlers for each sensor
-        for sensor in self.sensors:  # type: ignore[assignment]
-            await register_sensor_dbus_handlers(sensor, self.dbus)
+        await asyncio.gather(
+            *[
+                register_sensor_dbus_handlers(sensor, self.dbus)
+                for sensor in self.sensors
+            ]
+        )
 
     async def _register_sensors(self) -> None:
         """Register all sensors with Home Assistant."""
@@ -152,35 +148,29 @@ class SensorManager:
             *[self._register_sensor(sensor) for sensor in self.sensors]
         )
 
-    async def _register_sensor(self, sensor: BaseSensor) -> None:
+    async def _register_sensor(self, sensor: HardwareSensor) -> None:
         """Register a single sensor with Home Assistant."""
-        metadata = sensor.get_metadata()
-
-        # Build registration payload
         data = {
             "attributes": sensor.attributes,
-            "device_class": metadata.device_class,
-            "icon": metadata.icon,
-            "name": metadata.name,
+            "device_class": sensor.sensor_info.device_class,
+            "icon": sensor.sensor_info.icon,
+            "name": sensor.sensor_info.name,
             "state": sensor.state,
-            "type": sensor.sensor_type,
-            "unique_id": metadata.unique_id,
-            "unit_of_measurement": metadata.unit_of_measurement,
-            "state_class": metadata.state_class,
-            "entity_category": metadata.entity_category,
+            "type": sensor.sensor_info.type,
+            "unique_id": sensor.unique_id,
+            "unit_of_measurement": sensor.sensor_info.unit,
+            "state_class": sensor.sensor_info.state_class,
+            "entity_category": None,  # sensor.sensor_info.entity_category,
         }
-        # Remove empty values
-        data = {k: v for k, v in data.items() if v}
-
         payload = {"data": data, "type": "register_sensor"}
-        logger.info(f"Registering sensor: {metadata.unique_id}")
+        logger.info(f"Registering sensor: {sensor.unique_id}")
         logger.debug(f"Registration {payload=}")
 
-        res = await self.api.webhook_post("register_sensor", data=payload)
+        res = await self.api.webhook_post(payload)
 
         if not (res.ok or res.status == SC_REGISTER_SENSOR):
             raise RuntimeError(
-                f"Sensor registration failed for {metadata.unique_id} with {res.status=}"
+                f"Sensor registration failed for {sensor.unique_id} with {res.status=}"
             )
 
-        logger.info(f"Sensor registration successful: {metadata.unique_id}")
+        logger.info(f"Sensor registration successful: {sensor.unique_id}")

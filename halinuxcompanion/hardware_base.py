@@ -3,15 +3,24 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Type, TypeVar
 
 from .hardware_config import HardwareClassConfig, SensorInfo
-from .sensor_base import SensorMetadata
 
 logger = logging.getLogger(__name__)
 
 # Type variable for sensor data
 TSensorData = TypeVar("TSensorData")
+
+
+@dataclass
+class SensorMetadata:
+    """Metadata for a sensor instance."""
+
+    name: str
+    config_name: str
+    icon: Optional[str] = None
 
 
 class HardwareSensor:
@@ -49,30 +58,28 @@ class HardwareSensor:
         """Sensor type for HA (sensor or binary_sensor)"""
         return self.sensor_info.type
 
-    def get_metadata(self) -> SensorMetadata:
-        """Get sensor metadata."""
+    @property
+    def unique_id(self) -> str:
+        return "_".join([self.hardware_class, self.hardware_id, self.sensor_type_name])
+
+    @property
+    def native_unit_of_measurement(self) -> Optional[str]:
+        """Get the native unit of measurement for this sensor."""
+        return self.sensor_info.unit
+
+    @property
+    def name(self) -> str:
         # Use device name if available (e.g., for bluetooth devices)
-        display_name = self.hardware_id
         if (
             self._hardware_piece
             and hasattr(self._hardware_piece, "device_name")
             and self._hardware_piece.device_name
         ):
             display_name = self._hardware_piece.device_name
-
+        else:
+            display_name = self.hardware_id
         # Format: "Hardware ID - Sensor Type"
-        name = f"{display_name} - {self.sensor_info.name}"
-
-        return SensorMetadata(
-            unique_id=f"{self.hardware_class}_{self.hardware_id}_{self.sensor_type_name}",
-            name=name,
-            config_name="",  # Not used for hardware sensors
-            device_class=self.sensor_info.device_class,
-            state_class=self.sensor_info.state_class,
-            unit_of_measurement=self.sensor_info.unit,
-            icon=self.sensor_info.icon,
-            native_unit_of_measurement=self.sensor_info.unit,
-        )
+        return f"{display_name} - {self.sensor_info.name}"
 
 
 class HardwarePiece:

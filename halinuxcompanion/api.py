@@ -24,7 +24,6 @@ class API:
 
     token: str | None
     registration: RegistrationData | None = None
-    counter: int = 0
     session: ClientSession
     oauth_tokens: OAuthTokens | None = None
     companion: Companion
@@ -117,30 +116,26 @@ class API:
             raise ValueError("Device not registered")
         return self.instance_url + self.registration.webhook_path
 
-    async def webhook_post(self, type: str, data: dict) -> ClientResponse:
+    async def webhook_post(self, data: dict) -> ClientResponse:
         """Send a POST request to the webhook endpoint with the given type and data
         Simple wrapper that handles and logs response status, should be wrapped to handle clinet errors.
         :param type: Whats being posted, ussed for logging
         :param data: The data to send in the body of the request
         """
-        self.counter += 1
-        logger.debug(f"Sending webhook POST {self.counter} {type=}")
+        logger.debug("Sending webhook POST")
 
         async with self.session.post(self.webhook_url, json=data) as res:
-            logger.debug(f"Received response {res.status} to request {self.counter}")
-
-            if logger.level == logging.DEBUG:
-                if res.status == SC_INVALID_JSON:
-                    logger.error(f"Invalid JSON {self.webhook_url}")
-                if res.status == SC_MOBILE_COMPONENT_NOT_LOADED:
-                    logger.error(
-                        f"The mobile_app component has not been loaded {self.webhook_url}"
-                    )
-                elif res.status == SC_INTEGRATION_DELETED:
-                    logger.error(
-                        f"The integration has been deleted, need to register again {self.webhook_url}"
-                    )
-
+            logger.debug(f"Received response {res.status} to request")
+            if res.status == SC_INVALID_JSON:
+                logger.error(f"Invalid JSON {self.webhook_url}")
+            if res.status == SC_MOBILE_COMPONENT_NOT_LOADED:
+                logger.error(
+                    f"The mobile_app component has not been loaded {self.webhook_url}"
+                )
+            elif res.status == SC_INTEGRATION_DELETED:
+                logger.error(
+                    f"Integration was deleted, need to re-register {self.webhook_url}"
+                )
             return res
 
     async def get(self, endpoint: str, data=None, json=None) -> ClientResponse:

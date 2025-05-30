@@ -5,17 +5,17 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from ..hardware_base import (
+from ...hardware_base import (
     HardwareClass,
     HardwarePiece,
     HardwareProvider,
     HardwareSensor,
     PerPieceUpdateMixin,
 )
-from ..hardware_config import BatteryConfig, SensorInfo
-from ..sensors.battery.battery_provider import BatteryData, BatteryDataProvider
-from ..sensors.battery.battery_provider_psutil import PsutilBatteryProvider
-from ..sensors.battery.battery_provider_upower import UPowerBatteryProvider
+from ...hardware_config import BatteryConfig, SensorInfo
+from .battery_provider import BatteryData, BatteryDataProvider
+from .battery_provider_psutil import PsutilBatteryProvider
+from .battery_provider_upower import UPowerBatteryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -141,29 +141,28 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
         provider = await self.get_provider()
         pieces = await provider.discover_hardware()
         self._hardware_pieces = pieces
+        # Determine which sensors to enable based on provider type
+        if isinstance(provider, PsutilBatteryProvider):
+            # For psutil, only basic sensors are available
+            enabled = {"charge_level", "charging_state", "time_to_empty"}
+        else:
+            # For upower, all sensors are potentially available
+            enabled = {
+                "charge_level",
+                "charging_state",
+                "time_to_empty",
+                "time_to_full",
+                "temperature",
+                "voltage",
+                "charge_rate",
+                "discharge_rate",
+                "health",
+                "charge_cycles",
+                "energy",
+                "energy_full",
+            }
 
         for piece in pieces:
-            # Determine which sensors to enable based on provider type
-            if isinstance(piece._provider, PsutilBatteryProvider):
-                # For psutil, only basic sensors are available
-                enabled = {"charge_level", "charging_state", "time_to_empty"}
-            else:
-                # For upower, all sensors are potentially available
-                enabled = {
-                    "charge_level",
-                    "charging_state",
-                    "time_to_empty",
-                    "time_to_full",
-                    "temperature",
-                    "voltage",
-                    "charge_rate",
-                    "discharge_rate",
-                    "health",
-                    "charge_cycles",
-                    "energy",
-                    "energy_full",
-                }
-
             # Create enabled sensors
             if "charge_level" in enabled:
                 piece.charge_level_sensor = HardwareSensor(
@@ -326,5 +325,4 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
         all_sensors = []
         for piece in self._hardware_pieces:
             all_sensors.extend(piece.get_sensors())
-
         return all_sensors
