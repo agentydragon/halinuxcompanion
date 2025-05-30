@@ -20,7 +20,23 @@ class SensorMetadata:
 
     name: str
     config_name: str
-    icon: Optional[str] = None
+    icon: str | None = None
+
+
+class HardwarePiece:
+    """Represents a specific piece of hardware (e.g., a specific battery, network interface).
+
+    Optional helper class hardware implementations may use.
+    Provides no required interface - implementations define their own.
+    """
+
+    def __init__(self, hardware_id: str):
+        """Initialize a hardware piece.
+
+        Args:
+            hardware_id: Unique identifier for this hardware piece
+        """
+        self.hardware_id = hardware_id
 
 
 class HardwareSensor:
@@ -32,7 +48,7 @@ class HardwareSensor:
         hardware_id: str,
         sensor_type_name: str,
         sensor_info: SensorInfo,
-        hardware_piece: Optional["HardwarePiece"] = None,
+        hardware_piece: HardwarePiece,
     ):
         """Initialize a hardware sensor.
 
@@ -82,22 +98,6 @@ class HardwareSensor:
         return f"{display_name} - {self.sensor_info.name}"
 
 
-class HardwarePiece:
-    """Represents a specific piece of hardware (e.g., a specific battery, network interface).
-
-    This is an optional helper class that hardware implementations may use.
-    It provides no required interface - implementations define their own.
-    """
-
-    def __init__(self, hardware_id: str):
-        """Initialize a hardware piece.
-
-        Args:
-            hardware_id: Unique identifier for this hardware piece
-        """
-        self.hardware_id = hardware_id
-
-
 class HardwareProvider(ABC):
     """Base class for hardware providers that discover and manage hardware pieces."""
 
@@ -114,9 +114,6 @@ class HardwareProvider(ABC):
 class HardwareClass(ABC):
     """Base class for a hardware class (e.g., battery, network)."""
 
-    hardware_class: str  # Must be set by subclasses
-    sensor_definitions: Dict[str, SensorInfo]  # Must be set by subclasses
-
     def __init__(self, config: HardwareClassConfig):
         """Initialize hardware class with configuration.
 
@@ -124,7 +121,6 @@ class HardwareClass(ABC):
             config: Configuration for this hardware class
         """
         self.config = config
-        self._provider: Optional[HardwareProvider] = None
         self._hardware_pieces: list[HardwarePiece] = []
 
     @abstractmethod

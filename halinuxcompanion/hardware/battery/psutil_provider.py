@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import psutil
 
-from .battery_provider import BatteryData, BatteryDataProvider
+from .provider import BatteryData, BatteryDataProvider
 
 logger = logging.getLogger(__name__)
 

@@ -1,17 +1,17 @@
 """Battery data provider using UPower via D-Bus."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from dbus_fast import BusType, DBusError, Variant
 from dbus_fast.aio import MessageBus
 
-from .battery_provider import BatteryData, BatteryDataProvider
+from .provider import BatteryData, BatteryDataProvider
 
 logger = logging.getLogger(__name__)
 
 # D-Bus constants
-UPOWER_BUS_NAME = "org.freedesktop.UPower"
+UPOWER_BUS = "org.freedesktop.UPower"
 UPOWER_OBJECT_PATH = "/org/freedesktop/UPower"
 UPOWER_INTERFACE = "org.freedesktop.UPower"
 UPOWER_DEVICE_INTERFACE = "org.freedesktop.UPower.Device"
@@ -29,55 +29,42 @@ UPOWER_STATE_MAPPING = {
 class UPowerBatteryProvider(BatteryDataProvider):
     """Battery data provider using UPower via D-Bus."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._dbus = None
-        self._proxies: Dict[str, Any] = {}  # Cache all proxies
+        self._proxies: dict[str, Any] = {}  # Cache all proxies
 
     async def _ensure_dbus(self):
         """Ensure D-Bus connection is established."""
         if self._dbus is None:
             self._dbus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        return self._dbus
 
-    async def _get_proxy(self, object_path: str):
+    async def _get_proxy(self, path: str):
         """Get cached proxy or create new one."""
-        if object_path not in self._proxies:
-            await self._ensure_dbus()
-            introspection = await self._dbus.introspect(UPOWER_BUS_NAME, object_path)
-            self._proxies[object_path] = self._dbus.get_proxy_object(
-                UPOWER_BUS_NAME, object_path, introspection
-            )
-        return self._proxies[object_path]
+        if path not in self._proxies:
+            dbus = await self._ensure_dbus()
+            introspection = dbus.introspect(UPOWER_BUS, path)
+            self._proxies[path] = dbus.get_proxy_object(UPOWER_BUS, path, introspection)
+        return self._proxies[path]
 
     async def discover_batteries(self) -> List[str]:
         """Discover available batteries via UPower."""
         try:
-            proxy = await self._get_proxy(UPOWER_OBJECT_PATH)
-            upower = proxy.get_interface(UPOWER_INTERFACE)
+            upower = (await self._get_proxy(UPOWER_OBJECT_PATH)).get_interface(
+                UPOWER_INTERFACE
+            )
             devices = await upower.call_enumerate_devices()
         except DBusError:
             logger.error("DBus error discovering batteries via UPower", exc_info=True)
             return []
-
-        batteries = []
-        for device_path in devices:
-            if "/BAT" in device_path or "/battery_" in device_path:
-                # Extract battery ID from path (e.g., "/org/freedesktop/UPower/devices/battery_BAT0" -> "BAT0")
-                battery_id = device_path.split("_")[-1]
-                batteries.append(battery_id)
-
-        return batteries
+        return [path for path in devices if "battery_" in path or "BAT" in path]
 
     async def get_battery_data(self, battery_id: str) -> Optional[BatteryData]:
         """Get battery data from UPower."""
-        # Construct device path
-        device_path = f"/org/freedesktop/UPower/devices/battery_{battery_id}"
-
         try:
-            # Get device properties
-            device_proxy = await self._get_proxy(device_path)
-            properties = device_proxy.get_interface(DBUS_PROPERTIES_INTERFACE)
-
-            # Get all properties at once
+            properties = (await self._get_proxy(battery_id)).get_interface(
+                DBUS_PROPERTIES_INTERFACE
+            )
             all_props = await properties.call_get_all(UPOWER_DEVICE_INTERFACE)
         except DBusError:
             logger.error(
@@ -98,7 +85,6 @@ class UPowerBatteryProvider(BatteryDataProvider):
 
         # Extract temperature and convert from Kelvin if present
         temp_kelvin = get_value("Temperature")
-        temperature = temp_kelvin - 273.15 if temp_kelvin else None
 
         # Get energy rate
         energy_rate = get_value("EnergyRate")
@@ -122,7 +108,7 @@ class UPowerBatteryProvider(BatteryDataProvider):
             if get_value("ChargeCycles", 0) > 0
             else None,
             voltage=get_value("Voltage"),
-            temperature=temperature,
+            temperature=(temp_kelvin - 273.15 if temp_kelvin else None),
             technology=get_value("Technology"),
             model=get_value("Model"),
             vendor=get_value("Vendor"),

@@ -125,7 +125,7 @@ async def print_sensor_states(companion: Companion) -> None:
                 text = sensor_line(sensor)
                 print(
                     textwrap.indent(
-                        "\n".join(text), "      " if len(pieces) > 1 else "    "
+                        "\n".join(text), "    " if len(pieces) > 1 else "  "
                     )
                 )
 

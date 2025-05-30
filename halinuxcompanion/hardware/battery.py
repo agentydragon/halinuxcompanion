@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import List, Optional
 
-from ...hardware_base import (
+from ..hardware_base import (
     HardwareClass,
     HardwarePiece,
-    HardwareProvider,
     HardwareSensor,
     PerPieceUpdateMixin,
 )
-from ...hardware_config import BatteryConfig, SensorInfo
-from .battery_provider import BatteryData, BatteryDataProvider
-from .battery_provider_psutil import PsutilBatteryProvider
-from .battery_provider_upower import UPowerBatteryProvider
+from ..hardware_config import BatteryConfig, SensorInfo
+from .battery.provider import BatteryData, BatteryDataProvider
+from .battery.psutil_provider import PsutilBatteryProvider
+from .battery.upower_provider import UPowerBatteryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -97,20 +97,6 @@ class BatteryPiece(HardwarePiece):
         )
 
 
-class BatteryProvider(HardwareProvider):
-    """Battery hardware provider."""
-
-    def __init__(self, data_provider: BatteryDataProvider):
-        self._data_provider = data_provider
-
-    async def discover_hardware(self) -> List[HardwarePiece]:
-        """Discover available batteries."""
-        battery_ids = await self._data_provider.discover_batteries()
-        return [
-            BatteryPiece(battery_id, self._data_provider) for battery_id in battery_ids
-        ]
-
-
 class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
     """Battery hardware class."""
 
@@ -122,89 +108,52 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
         self.config: BatteryConfig = config
         self._hardware_pieces: list[BatteryPiece] = []  # type: ignore[assignment]
 
-    async def get_provider(self) -> HardwareProvider:
-        """Get the hardware provider based on configuration."""
-        if not self._provider:
-            # Create data provider based on implementation choice
-            data_provider: BatteryDataProvider
-            if self.config.implementation == "upower":
-                data_provider = UPowerBatteryProvider()
-            else:
-                data_provider = PsutilBatteryProvider()
-
-            self._provider = BatteryProvider(data_provider)
-
-        return self._provider
+        self.provider: BatteryDataProvider
+        if self.config.implementation == "upower":
+            self.provider = UPowerBatteryProvider()
+        else:
+            self.provider = PsutilBatteryProvider()
 
     async def discover_sensors(self) -> List[HardwareSensor]:
         """Discover and create sensors for batteries."""
-        provider = await self.get_provider()
-        pieces = await provider.discover_hardware()
+        battery_ids = await self.provider.discover_batteries()
+        pieces = [BatteryPiece(battery_id, self.provider) for battery_id in battery_ids]
         self._hardware_pieces = pieces
         # Determine which sensors to enable based on provider type
-        if isinstance(provider, PsutilBatteryProvider):
-            # For psutil, only basic sensors are available
-            enabled = {"charge_level", "charging_state", "time_to_empty"}
-        else:
-            # For upower, all sensors are potentially available
-            enabled = {
-                "charge_level",
-                "charging_state",
-                "time_to_empty",
-                "time_to_full",
-                "temperature",
-                "voltage",
-                "charge_rate",
-                "discharge_rate",
-                "health",
-                "charge_cycles",
-                "energy",
-                "energy_full",
-            }
 
         for piece in pieces:
-            # Create enabled sensors
-            if "charge_level" in enabled:
-                piece.charge_level_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
-                    sensor_type_name="charge_level",
-                    sensor_info=SensorInfo(
-                        name="Battery Level",
-                        unit="%",
-                        device_class="battery",
-                        state_class="measurement",
-                    ),
-                    hardware_piece=piece,
-                )
+            _sensor = partial(
+                HardwareSensor,
+                hardware_class=self.hardware_class,
+                hardware_id=piece.hardware_id,
+                hardware_piece=piece,
+            )
+            piece.charge_level_sensor = _sensor(
+                sensor_type_name="charge_level",
+                sensor_info=SensorInfo(
+                    name="Battery Level",
+                    unit="%",
+                    device_class="battery",
+                    state_class="measurement",
+                ),
+            )
+            piece.charging_state_sensor = _sensor(
+                sensor_type_name="charging_state",
+                sensor_info=SensorInfo(name="Battery State", icon="mdi:battery"),
+            )
+            piece.time_to_empty_sensor = _sensor(
+                sensor_type_name="time_to_empty",
+                sensor_info=SensorInfo(
+                    name="Time to Empty",
+                    unit="s",
+                    device_class="duration",
+                    state_class="measurement",
+                ),
+            )
 
-            if "charging_state" in enabled:
-                piece.charging_state_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
-                    sensor_type_name="charging_state",
-                    sensor_info=SensorInfo(name="Battery State", icon="mdi:battery"),
-                    hardware_piece=piece,
-                )
-
-            if "time_to_empty" in enabled:
-                piece.time_to_empty_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
-                    sensor_type_name="time_to_empty",
-                    sensor_info=SensorInfo(
-                        name="Time to Empty",
-                        unit="s",
-                        device_class="duration",
-                        state_class="measurement",
-                    ),
-                    hardware_piece=piece,
-                )
-
-            if "time_to_full" in enabled:
-                piece.time_to_full_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+            # For upower, all sensors are potentially available
+            if isinstance(self.provider, UPowerBatteryProvider):
+                piece.time_to_full_sensor = _sensor(
                     sensor_type_name="time_to_full",
                     sensor_info=SensorInfo(
                         name="Time to Full",
@@ -212,13 +161,8 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="duration",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "temperature" in enabled:
-                piece.temperature_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.temperature_sensor = _sensor(
                     sensor_type_name="temperature",
                     sensor_info=SensorInfo(
                         name="Battery Temperature",
@@ -226,13 +170,8 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="temperature",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "voltage" in enabled:
-                piece.voltage_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.voltage_sensor = _sensor(
                     sensor_type_name="voltage",
                     sensor_info=SensorInfo(
                         name="Battery Voltage",
@@ -240,13 +179,8 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="voltage",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "charge_rate" in enabled:
-                piece.charge_rate_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.charge_rate_sensor = _sensor(
                     sensor_type_name="charge_rate",
                     sensor_info=SensorInfo(
                         name="Charge Rate",
@@ -254,13 +188,8 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="power",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "discharge_rate" in enabled:
-                piece.discharge_rate_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.discharge_rate_sensor = _sensor(
                     sensor_type_name="discharge_rate",
                     sensor_info=SensorInfo(
                         name="Discharge Rate",
@@ -268,35 +197,20 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="power",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "health" in enabled:
-                piece.health_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.health_sensor = _sensor(
                     sensor_type_name="health",
                     sensor_info=SensorInfo(
                         name="Battery Health", unit="%", state_class="measurement"
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "charge_cycles" in enabled:
-                piece.charge_cycles_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.charge_cycles_sensor = _sensor(
                     sensor_type_name="charge_cycles",
                     sensor_info=SensorInfo(
                         name="Charge Cycles", state_class="total_increasing"
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "energy" in enabled:
-                piece.energy_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.energy_sensor = _sensor(
                     sensor_type_name="energy",
                     sensor_info=SensorInfo(
                         name="Battery Energy",
@@ -304,13 +218,8 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="energy_storage",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
-
-            if "energy_full" in enabled:
-                piece.energy_full_sensor = HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
+                piece.energy_full_sensor = _sensor(
                     sensor_type_name="energy_full",
                     sensor_info=SensorInfo(
                         name="Battery Energy Full",
@@ -318,7 +227,6 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                         device_class="energy_storage",
                         state_class="measurement",
                     ),
-                    hardware_piece=piece,
                 )
 
         # Construct all_sensors at the end

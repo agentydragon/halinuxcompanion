@@ -53,7 +53,7 @@ class SensorManager:
     dbus: Dbus
     update_counter: int = 0
     sensors: list[HardwareSensor] = field(default_factory=list)
-    hardware_instances: list["HardwareClass"] = field(default_factory=list)
+    hardware_instances: list[HardwareClass] = field(default_factory=list)
 
     async def update_sensors(self) -> bool:
         """Update all sensors with Home Assistant
@@ -67,10 +67,10 @@ class SensorManager:
         self.update_counter += 1
 
         # Update all hardware classes (which update their sensors directly)
-        hw_update_tasks = [
-            hw_instance.update_all_sensors() for hw_instance in self.hardware_instances
-        ]
-        await asyncio.gather(*hw_update_tasks, return_exceptions=True)
+        await asyncio.gather(
+            *[hw.update_all_sensors() for hw in self.hardware_instances],
+            return_exceptions=True,
+        )
 
         prefix = f"Sensors update {self.update_counter}"
         logger.info(
