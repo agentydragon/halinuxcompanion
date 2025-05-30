@@ -78,12 +78,6 @@ class BluetoothConfig(HardwareClassConfig):
     # Creates binary_sensor per device for connected status
 
 
-class StatusConfig(HardwareClassConfig):
-    """Configuration for system status hardware class."""
-
-    # Single sensor showing overall system status
-
-
 class UptimeConfig(HardwareClassConfig):
     """Configuration for uptime hardware class."""
 
@@ -106,7 +100,6 @@ class HardwareConfig(BaseModel):
     camera: Optional[CameraConfig] = None
     lid: Optional[LidConfig] = None
     bluetooth: Optional[BluetoothConfig] = None
-    status: Optional[StatusConfig] = None
     uptime: Optional[UptimeConfig] = None
     temperature: Optional[TemperatureConfig] = None
 

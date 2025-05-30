@@ -19,7 +19,6 @@ __all__ = [
     "bluetooth_device",
     "camera_state",
     "cpu",
-    "lid_state",
     "memory",
     "network_interface",
     "network_interface_status",
