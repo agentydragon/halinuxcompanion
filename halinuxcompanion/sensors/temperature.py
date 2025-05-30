@@ -1,7 +1,9 @@
 """Temperature sensors implementation."""
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import psutil
 
@@ -43,10 +45,12 @@ class TemperatureSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
+    async def discover_sensors(
+        cls, config: Optional[Dict[str, Any]] = None
+    ) -> List[BaseSensor]:
         """Discover available temperature sensors."""
         del config  # Unused parameter
-        sensors = []
+        sensors: List[BaseSensor] = []
         discovered_names = set()
 
         # Use psutil only
@@ -55,7 +59,9 @@ class TemperatureSensor(BaseSensor):
             for chip_name, chip_temps in temps.items():
                 for temp in chip_temps:
                     # Create unique sensor name
-                    sensor_name = f"{chip_name}_{temp.label}" if temp.label else chip_name
+                    sensor_name = (
+                        f"{chip_name}_{temp.label}" if temp.label else chip_name
+                    )
 
                     # Avoid duplicates
                     if sensor_name in discovered_names:
@@ -76,9 +82,13 @@ class TemperatureSensor(BaseSensor):
 
                     sensors.append(sensor)
                     label_info = f" ({temp.label})" if temp.label else ""
-                    logger.info(f"Discovered temperature sensor: {sensor_name}{label_info}")
+                    logger.info(
+                        f"Discovered temperature sensor: {sensor_name}{label_info}"
+                    )
         except Exception:
-            logger.debug("Failed to discover temperature sensors via psutil", exc_info=True)
+            logger.debug(
+                "Failed to discover temperature sensors via psutil", exc_info=True
+            )
 
         if not sensors:
             logger.info("No temperature sensors found")
@@ -94,7 +104,9 @@ class TemperatureSensor(BaseSensor):
             temps = psutil.sensors_temperatures()
             for chip_name, chip_temps in temps.items():
                 for temp in chip_temps:
-                    sensor_name = f"{chip_name}_{temp.label}" if temp.label else chip_name
+                    sensor_name = (
+                        f"{chip_name}_{temp.label}" if temp.label else chip_name
+                    )
                     if sensor_name == self.sensor_name:
                         temperature = temp.current
                         # Update thresholds if available
@@ -126,7 +138,9 @@ class TemperatureSensor(BaseSensor):
                 metadata.icon = "mdi:thermometer"
 
         except Exception:
-            logger.error(f"Failed to update temperature sensor {self.sensor_name}", exc_info=True)
+            logger.error(
+                f"Failed to update temperature sensor {self.sensor_name}", exc_info=True
+            )
             self.state = "unavailable"
             self.attributes = {"error": "Failed to read temperature"}
             return
@@ -138,17 +152,25 @@ class TemperatureSensor(BaseSensor):
         sensor_name_parts = self.sensor_name.split("_", 1)
         chip_name = sensor_name_parts[0] if sensor_name_parts else self.sensor_name
 
-        if self.sensor_label and self.sensor_label != chip_name and self.sensor_label != self.sensor_name:
+        if (
+            self.sensor_label
+            and self.sensor_label != chip_name
+            and self.sensor_label != self.sensor_name
+        ):
             self.attributes["sensor_label"] = self.sensor_label
 
         # Add thresholds if available
         if self._max_threshold is not None:
             self.attributes["max_threshold"] = self._max_threshold
-            self.attributes["max_threshold_reached"] = temperature >= self._max_threshold
+            self.attributes["max_threshold_reached"] = (
+                temperature >= self._max_threshold
+            )
 
         if self._critical_threshold is not None:
             self.attributes["critical_threshold"] = self._critical_threshold
-            self.attributes["critical_threshold_reached"] = temperature >= self._critical_threshold
+            self.attributes["critical_threshold_reached"] = (
+                temperature >= self._critical_threshold
+            )
 
         # Add temperature status
         if self._critical_threshold and temperature >= self._critical_threshold:
@@ -159,5 +181,3 @@ class TemperatureSensor(BaseSensor):
             self.attributes["status"] = "low"
         else:
             self.attributes["status"] = "normal"
-
-

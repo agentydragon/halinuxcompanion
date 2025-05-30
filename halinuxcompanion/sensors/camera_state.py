@@ -1,5 +1,7 @@
 """Camera state sensor implementation."""
 
+from __future__ import annotations
+
 import logging
 from glob import glob
 from subprocess import run
@@ -32,7 +34,9 @@ class CameraStateSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
+    async def discover_sensors(
+        cls, config: Optional[Dict[str, Any]] = None
+    ) -> list["BaseSensor"]:
         """Discover camera state sensor - always returns one instance."""
         return [cls()]
 

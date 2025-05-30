@@ -1,57 +1,49 @@
 """Uptime hardware class implementation."""
 
+from __future__ import annotations
+
 import logging
 import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, List, Optional
+from typing import List, Optional
 
 import psutil
 
-from ..hardware_base import HardwareClass, HardwarePiece, HardwareProvider, PerPieceUpdateMixin
-from ..hardware_config import UptimeConfig, SensorInfo
+from ..hardware_base import (
+    HardwareClass,
+    HardwarePiece,
+    HardwareProvider,
+    HardwareSensor,
+    PerPieceUpdateMixin,
+)
+from ..hardware_config import SensorInfo, UptimeConfig
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class UptimeData:
-    """Uptime sensor data."""
-    total_seconds: int
-    boot_time: str  # ISO format
-
-
-class UptimePiece(HardwarePiece[UptimeData]):
+class UptimePiece(HardwarePiece):
     """Represents system uptime."""
-    
+
     def __init__(self):
         super().__init__("uptime")
-    
-    async def _fetch_sensor_data(self) -> Optional[UptimeData]:
-        """Fetch fresh uptime data."""
+        self.total_seconds_sensor: Optional[HardwareSensor] = None
+
+    async def update(self) -> None:
+        """Update uptime."""
         boot_time = psutil.boot_time()
         current_time = time.time()
         uptime_seconds = int(current_time - boot_time)
-        
-        return UptimeData(
-            total_seconds=uptime_seconds,
-            boot_time=datetime.fromtimestamp(boot_time, timezone.utc).isoformat()
-        )
-    
-    def get_available_sensors(self) -> set[str]:
-        """Get set of available sensor types."""
-        return {"uptime"}
-    
-    def extract_sensor_value(self, data: UptimeData, sensor_type: str) -> Any:
-        """Extract sensor value from uptime data."""
-        if sensor_type == "uptime":
-            return data.total_seconds
-        return None
+
+        if self.total_seconds_sensor:
+            self.total_seconds_sensor.state = uptime_seconds
+
+    def get_sensors(self) -> List[HardwareSensor]:
+        """Get list of sensors."""
+        return list(filter(None, [self.total_seconds_sensor]))
 
 
 class UptimeProvider(HardwareProvider):
     """Uptime hardware provider."""
-    
+
     async def discover_hardware(self) -> List[HardwarePiece]:
         """Discover uptime - always returns single instance."""
         return [UptimePiece()]
@@ -59,25 +51,42 @@ class UptimeProvider(HardwareProvider):
 
 class UptimeHardwareClass(PerPieceUpdateMixin, HardwareClass):
     """Uptime hardware class."""
-    
-    hardware_name = "uptime"
-    sensor_definitions = {
-        "uptime": SensorInfo(
-            name="Uptime",
-            icon="mdi:clock-outline"
-        )
-    }
-    
+
+    hardware_class = "uptime"
+    config_field = "uptime"
+
     def __init__(self, config: UptimeConfig):
         super().__init__(config)
         self.config: UptimeConfig = config
-    
+        self._hardware_pieces: list[UptimePiece] = []  # type: ignore[assignment]
+
     async def get_provider(self) -> HardwareProvider:
-        """Get the hardware provider."""
-        if not self._provider:
-            self._provider = UptimeProvider()
-        return self._provider
-    
-    def get_enabled_sensors(self, available_sensors: set[str]) -> set[str]:
-        # Always enable uptime sensor
-        return available_sensors
+        return UptimeProvider()
+
+    async def discover_sensors(self) -> List[HardwareSensor]:
+        """Discover available sensors."""
+        provider = await self.get_provider()
+        pieces = await provider.discover_hardware()
+        self._hardware_pieces = pieces
+
+        if not pieces:
+            return []
+
+        # Uptime is a singleton
+        piece = pieces[0]
+
+        piece.total_seconds_sensor = HardwareSensor(
+            hardware_class=self.hardware_class,
+            hardware_id=piece.hardware_id,
+            sensor_type_name="total_seconds",
+            sensor_info=SensorInfo(
+                name="Uptime",
+                unit="s",
+                device_class="duration",
+                state_class="total_increasing",
+                icon="mdi:clock-outline",
+            ),
+            hardware_piece=piece,
+        )
+
+        return piece.get_sensors()

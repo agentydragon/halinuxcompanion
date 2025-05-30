@@ -2,10 +2,8 @@ import json
 
 import pytest
 
-from halinuxcompanion.api import Server
-from halinuxcompanion.companion import CommandConfig, Companion
+from halinuxcompanion.companion import CommandConfig, Companion, CompanionConfig
 from halinuxcompanion.notifier import Notifier
-from halinuxcompanion.sensors.status import StatusSensor
 
 
 def get_config() -> dict:
@@ -24,17 +22,14 @@ class RequestStub:
 
 def setup_companion() -> Companion:
     data = get_config()
-    companion = Companion(data)
+    config = CompanionConfig(**data)
+    companion = Companion(config)
     return companion
 
 
 def setup_notifier() -> Notifier:
     notifier = Notifier()
     return notifier
-
-
-def test_status_updater():
-    StatusSensor.updater()
 
 
 @pytest.mark.asyncio

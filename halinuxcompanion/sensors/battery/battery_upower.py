@@ -1,7 +1,7 @@
 """Battery sensors using UPower."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from halinuxcompanion.sensor_base import BaseSensor
 from .battery_provider import BatteryData, BatteryDataProvider
@@ -30,12 +30,14 @@ class UPowerSensor(BaseSensor):
         self._battery_data = battery_data
 
     @classmethod
-    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> List["UPowerSensor"]:
+    async def discover_sensors(
+        cls, config: Optional[Dict[str, Any]] = None
+    ) -> list[BaseSensor]:
         """Discover battery sensors."""
         provider = UPowerBatteryProvider()
         battery_ids = await provider.discover_batteries()
 
-        sensors = []
+        sensors: list[BaseSensor] = []
         for battery_id in battery_ids:
             battery_data = await provider.get_battery_data(battery_id)
             if battery_data:
@@ -55,18 +57,20 @@ class UPowerSensor(BaseSensor):
 
     async def update(self) -> None:
         """Update battery state."""
-        self._battery_data = await self._provider.get_battery_data(self._battery_id)
+        battery_data = await self._provider.get_battery_data(self._battery_id)
 
-        if self._battery_data:
-            self.state = self._battery_data.percent
-            # Basic attributes - other data will be in separate sensors
-            self.attributes = {
-                "power_plugged": self._battery_data.plugged,
-                "battery_state": self._battery_data.state,
-            }
-        else:
+        if not battery_data:
             self.state = "unavailable"
             self.attributes = {}
+            return
+
+        self._battery_data = battery_data
+        self.state = battery_data.percent
+        # Basic attributes - other data will be in separate sensors
+        self.attributes = {
+            "power_plugged": battery_data.plugged,
+            "battery_state": battery_data.state,
+        }
 
 
 # Helper function for subsensor discovery

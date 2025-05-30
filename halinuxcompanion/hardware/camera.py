@@ -1,97 +1,102 @@
 """Camera hardware class implementation."""
 
+from __future__ import annotations
+
 import logging
-from dataclasses import dataclass
 from glob import glob
 from subprocess import run
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from ..hardware_base import HardwareClass, HardwarePiece, HardwareProvider, PerPieceUpdateMixin
+from ..hardware_base import (
+    HardwareClass,
+    HardwarePiece,
+    HardwareProvider,
+    HardwareSensor,
+    PerPieceUpdateMixin,
+)
 from ..hardware_config import CameraConfig, SensorInfo
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class CameraData:
-    """Camera sensor data."""
-    state: str  # "active", "idle", or "unavailable"
-    device_path: str
-
-
-class CameraPiece(HardwarePiece[CameraData]):
+class CameraPiece(HardwarePiece):
     """Represents a camera device."""
-    
+
     def __init__(self, hardware_id: str, device_path: str):
         super().__init__(hardware_id)
         self.device_path = device_path
-    
-    async def _fetch_sensor_data(self) -> Optional[CameraData]:
-        """Fetch fresh sensor data for this camera."""
+        self.state_sensor: Optional[HardwareSensor] = None
+
+    async def update(self) -> None:
+        """Update camera state."""
+        if not self.state_sensor:
+            return
         try:
             # Check if camera is being used
             result = run(["fuser", self.device_path], capture_output=True, check=False)
             output = result.stdout.decode("utf-8").strip()
-            
-            state = "active" if output else "idle"
-            return CameraData(state=state, device_path=self.device_path)
+            self.state_sensor.state = "active" if output else "idle"
         except Exception:
-            logger.debug(f"Failed to check camera state for {self.device_path}", exc_info=True)
-            return CameraData(state="unavailable", device_path=self.device_path)
-    
-    def get_available_sensors(self) -> set[str]:
-        """Get set of available sensor types."""
-        return {"state"}
-    
-    def extract_sensor_value(self, data: CameraData, sensor_type: str) -> Any:
-        """Extract a specific sensor value from camera data."""
-        if sensor_type == "state":
-            return data.state
-        return None
+            logger.debug(
+                f"Failed to check camera state for {self.device_path}", exc_info=True
+            )
+            self.state_sensor.state = "unavailable"
+
+    def get_sensors(self) -> List[HardwareSensor]:
+        """Get list of sensors."""
+        return list(filter(None, [self.state_sensor]))
 
 
 class CameraProvider(HardwareProvider):
     """Camera hardware provider."""
-    
+
     async def discover_hardware(self) -> List[HardwarePiece]:
         """Discover available cameras."""
         devices = glob("/dev/video*")
-        pieces = []
-        
+        pieces: List[HardwarePiece] = []
+
         for device in devices:
             # Extract device number from path
             device_name = device.split("/")[-1]
             pieces.append(CameraPiece(device_name, device))
-        
+
         if pieces:
-            logger.debug(f"Discovered {len(pieces)} camera devices: {', '.join(d.hardware_id for d in pieces)}")
+            logger.debug(
+                f"Discovered {len(pieces)} camera devices: {', '.join(d.hardware_id for d in pieces)}"
+            )
         else:
             logger.debug("No camera devices found")
-        
+
         return pieces
 
 
 class CameraHardwareClass(PerPieceUpdateMixin, HardwareClass):
     """Camera hardware class."""
-    
-    hardware_name = "camera"
-    sensor_definitions = {
-        "state": SensorInfo(
-            name="Camera State",
-            icon="mdi:video"
-        )
-    }
-    
+
+    hardware_class = "camera"
+    config_field = "camera"
+
     def __init__(self, config: CameraConfig):
         super().__init__(config)
         self.config: CameraConfig = config
-    
+        self._hardware_pieces: list[CameraPiece] = []  # type: ignore[assignment]
+
     async def get_provider(self) -> HardwareProvider:
-        """Get the hardware provider."""
-        if not self._provider:
-            self._provider = CameraProvider()
-        return self._provider
-    
-    def get_enabled_sensors(self, available_sensors: set[str]) -> set[str]:
-        # Always enable state sensor
-        return available_sensors
+        return CameraProvider()
+
+    async def discover_sensors(self) -> List[HardwareSensor]:
+        """Discover available sensors."""
+        provider = await self.get_provider()
+        pieces = await provider.discover_hardware()
+        self._hardware_pieces = pieces
+
+        # Create sensors for each camera
+        for piece in pieces:
+            piece.state_sensor = HardwareSensor(
+                hardware_class=self.hardware_class,
+                hardware_id=piece.hardware_id,
+                sensor_type_name="state",
+                sensor_info=SensorInfo(name="Camera State", icon="mdi:video"),
+                hardware_piece=piece,
+            )
+        return [piece.state_sensor for piece in pieces]

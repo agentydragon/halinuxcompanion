@@ -1,6 +1,5 @@
 """Tests for file-based secret storage."""
 
-import os
 import stat
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -9,7 +8,10 @@ from unittest.mock import patch
 
 import pytest
 
-from halinuxcompanion.secret_storage.file import FileSecretStorage, check_file_permissions
+from halinuxcompanion.secret_storage.file import (
+    FileSecretStorage,
+    check_file_permissions,
+)
 from halinuxcompanion.oauth import OAuthTokens
 
 
@@ -252,4 +254,3 @@ class TestFileSecretStorage:
 
         # Empty tokens get stripped and become None
         assert storage.load_long_lived_token() is None
-

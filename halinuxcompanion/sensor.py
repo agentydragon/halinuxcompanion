@@ -17,7 +17,8 @@ from halinuxcompanion.hardware import (
     TemperatureHardwareClass,
     UptimeHardwareClass,
 )
-from halinuxcompanion.sensor_base import BaseSensor, DiscoverySensorManager
+from halinuxcompanion.hardware_base import HardwareClass
+from halinuxcompanion.sensor_base import BaseSensor
 
 if TYPE_CHECKING:
     from halinuxcompanion.api import API
@@ -27,6 +28,23 @@ logger = logging.getLogger(__name__)
 
 SC_REGISTER_SENSOR = 301
 
+# Map of hardware config fields to hardware classes
+# Status sensor doesn't fit the model - it uses D-Bus signals
+HARDWARE_CLASSES = {
+    hw_class.config_field: hw_class  # type: ignore[attr-defined]
+    for hw_class in [
+        BatteryHardwareClass,
+        BluetoothHardwareClass,
+        CameraHardwareClass,
+        CPUHardwareClass,
+        LidHardwareClass,
+        MemoryHardwareClass,
+        NetworkHardwareClass,
+        TemperatureHardwareClass,
+        UptimeHardwareClass,
+    ]
+}
+
 
 class SensorManager:
     """Manages sensors registration, and updates to Home Assistant"""
@@ -35,17 +53,11 @@ class SensorManager:
     update_counter: int = 0
     sensors: list[BaseSensor] = []
     dbus: Dbus
-    discovery_managers: list[DiscoverySensorManager] = []
     hardware_instances: dict[str, "HardwareClass"] = {}
 
     def __init__(self, api: API, dbus: Dbus) -> None:
         self.api = api
         self.dbus = dbus
-
-    async def register_sensors(self):
-        """Register all sensors with Home Assistant"""
-        # Discover and register sensors
-        await self.discover_and_register_sensors()
 
     async def update_sensors(self) -> bool:
         """Update all sensors with Home Assistant
@@ -58,31 +70,23 @@ class SensorManager:
 
         self.update_counter += 1
 
-        # First, update all hardware classes (bulk updates)
+        # Update all hardware classes (which update their sensors directly)
         hw_update_tasks = []
         for hw_instance in self.hardware_instances.values():
             hw_update_tasks.append(hw_instance.update_all_sensors())
         await asyncio.gather(*hw_update_tasks, return_exceptions=True)
 
-        # Then update individual sensors to extract values from cached data
-        update_tasks = []
-        for sensor in self.sensors:
-            update_tasks.append(sensor.update())
-        await asyncio.gather(*update_tasks, return_exceptions=True)
-
         # Build update payload
-        updates = []
-        for sensor in self.sensors:
-            metadata = sensor.get_metadata()
-            updates.append(
-                {
-                    "attributes": sensor.attributes,
-                    "icon": metadata.icon,
-                    "state": sensor.state,
-                    "type": sensor.sensor_type,
-                    "unique_id": metadata.unique_id,
-                }
-            )
+        updates = [
+            {
+                "attributes": sensor.attributes,
+                "icon": sensor.get_metadata().icon,
+                "state": sensor.state,
+                "type": sensor.sensor_type,
+                "unique_id": sensor.get_metadata().unique_id,
+            }
+            for sensor in self.sensors
+        ]
 
         data = {
             "type": "update_sensor_states",
@@ -114,60 +118,39 @@ class SensorManager:
             logger.error("No companion object found in API")
             return
 
-        # Map of hardware config fields to hardware classes
-        hardware_classes = {
-            "battery": BatteryHardwareClass,
-            "network": NetworkHardwareClass,
-            "cpu": CPUHardwareClass,
-            "memory": MemoryHardwareClass,
-            "lid": LidHardwareClass,
-            "temperature": TemperatureHardwareClass,
-            "camera": CameraHardwareClass,
-            "bluetooth": BluetoothHardwareClass,
-            "uptime": UptimeHardwareClass,
-            # Status sensor doesn't fit the model - it uses D-Bus signals
-        }
-
         # Discover sensors for each enabled hardware class
-        for hw_name, hw_class in hardware_classes.items():
+        for hw_name, hw_class in HARDWARE_CLASSES.items():
             hw_config = getattr(companion.hardware, hw_name, None)
-            if hw_config and hw_config.enabled:
-                logger.info(f"Discovering {hw_name} sensors...")
-                hw_instance = hw_class(hw_config)
-                self.hardware_instances[hw_name] = hw_instance
-                discovered = await hw_instance.discover_sensors()
-                for sensor in discovered:
-                    self.sensors.append(sensor)
-                    logger.info(f"Discovered sensor: {sensor.get_metadata().unique_id}")
+            if not hw_config or not hw_config.enabled:
+                continue
+            logger.info(f"Discovering {hw_name} sensors...")
+            hw_instance = hw_class(hw_config)  # type: ignore[abstract]
+            self.hardware_instances[hw_name] = hw_instance
+            discovered = await hw_instance.discover_sensors()
+            for sensor in discovered:
+                self.sensors.append(sensor)  # type: ignore[arg-type]
+                logger.info(f"Discovered sensor: {sensor.get_metadata().unique_id}")
 
         if not self.sensors:
-            logger.warning("No sensors discovered! Check sensor configuration and system capabilities.")
+            logger.warning(
+                "No sensors discovered! Check sensor configuration and system capabilities."
+            )
             return
 
         logger.info(f"Total sensors discovered: {len(self.sensors)}")
-
-        # Create discovery managers for sensors that support it
-        discovery_classes = set()
-        for sensor in self.sensors:
-            if hasattr(sensor, "start_discovery") and sensor.__class__ not in discovery_classes:
-                discovery_classes.add(sensor.__class__)
-                manager = DiscoverySensorManager(sensor.__class__, self)
-                self.discovery_managers.append(manager)
 
         # Register all discovered sensors
         await self._register_sensors()
 
         # Register D-Bus handlers for each sensor
-        for sensor in self.sensors:
+        for sensor in self.sensors:  # type: ignore[assignment]
             await register_sensor_dbus_handlers(sensor, self.dbus)
-
-        # Start discovery managers
-        for manager in self.discovery_managers:
-            await manager.start()
 
     async def _register_sensors(self) -> None:
         """Register all sensors with Home Assistant."""
-        await asyncio.gather(*[self._register_sensor(sensor) for sensor in self.sensors])
+        await asyncio.gather(
+            *[self._register_sensor(sensor) for sensor in self.sensors]
+        )
 
     async def _register_sensor(self, sensor: BaseSensor) -> None:
         """Register a single sensor with Home Assistant."""
@@ -196,6 +179,8 @@ class SensorManager:
         res = await self.api.webhook_post("register_sensor", data=payload)
 
         if not (res.ok or res.status == SC_REGISTER_SENSOR):
-            raise RuntimeError(f"Sensor registration failed for {metadata.unique_id} with {res.status=}")
+            raise RuntimeError(
+                f"Sensor registration failed for {metadata.unique_id} with {res.status=}"
+            )
 
         logger.info(f"Sensor registration successful: {metadata.unique_id}")

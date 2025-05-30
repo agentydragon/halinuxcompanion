@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import cached_property
-from pathlib import Path
 from typing import Dict, Optional
 
 from .oauth import OAuthTokens
@@ -28,7 +27,6 @@ class SecretStorageBackend(str, Enum):
 
     FILE = "file"
     LIBSECRET = "libsecret"
-    AUTO = "auto"  # Automatically choose best available
 
 
 class SecretStorage(ABC):
@@ -72,7 +70,9 @@ class LibSecretStorage(SecretStorage):
 
     def __init__(self):
         if Secret is None:
-            raise ImportError("libsecret is not available. Install python3-gi and libsecret.")
+            raise ImportError(
+                "libsecret is not available. Install python3-gi and libsecret."
+            )
 
     @cached_property
     def schema(self):
@@ -162,38 +162,3 @@ class LibSecretStorage(SecretStorage):
     def delete_long_lived_token(self) -> None:
         """Delete long-lived token from keyring."""
         self._clear_password("long_lived_token")
-
-
-def get_secret_storage(backend: SecretStorageBackend, state_dir: Path) -> SecretStorage:
-    """Get the appropriate secret storage backend.
-
-    Args:
-        backend: The storage backend to use
-        state_dir: Directory for file-based storage
-
-    Returns:
-        SecretStorage implementation
-
-    Raises:
-        ValueError: If invalid backend
-        ImportError: If libsecret requested but not available
-    """
-    # Import here to avoid circular imports
-    from .secret_storage.file import FileSecretStorage
-
-    if backend == SecretStorageBackend.AUTO:
-        # Try libsecret first, fall back to file
-        if Secret is not None:
-            try:
-                return LibSecretStorage()
-            except ImportError:
-                logger.warning("Failed to initialize libsecret, falling back to file storage")
-        return FileSecretStorage(state_dir)
-
-    if backend == SecretStorageBackend.LIBSECRET:
-        return LibSecretStorage()
-
-    if backend == SecretStorageBackend.FILE:
-        return FileSecretStorage(state_dir)
-
-    raise ValueError(f"Unknown storage backend: {backend}")

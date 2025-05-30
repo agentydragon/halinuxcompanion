@@ -1,5 +1,7 @@
 import logging
-from typing import Any, Callable, Optional
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from dbus_next import BusType
 from dbus_next.aio import MessageBus, ProxyInterface
@@ -12,115 +14,121 @@ LOGIN_INTERFACE = "org.freedesktop.login1.Manager"
 SCREENSAVER_INTERFACE = "org.freedesktop.ScreenSaver"
 SCREENSAVER_GNOME_INTERFACE = "org.gnome.ScreenSaver"
 
-SIGNALS = {
-    "session.notification_on_action_invoked": {
-        "name": "on_action_invoked",
-        "interface": NOTIFICATIONS_INTERFACE,
-    },
-    "session.notification_on_notification_closed": {
-        "name": "on_notification_closed",
-        "interface": NOTIFICATIONS_INTERFACE,
-    },
-    "session.screensaver_on_active_changed": {
-        "name": "on_active_changed",
-        "interface": SCREENSAVER_INTERFACE,
-    },
-    "session.gnome_screensaver_on_active_changed": {
-        "name": "on_active_changed",
-        "interface": SCREENSAVER_GNOME_INTERFACE,
-    },
-    "system.login_on_prepare_for_sleep": {
-        "name": "on_prepare_for_sleep",
-        "interface": LOGIN_INTERFACE,
-    },
-    "system.login_on_prepare_for_shutdown": {
-        "name": "on_prepare_for_shutdown",
-        "interface": LOGIN_INTERFACE,
-    },
-    "subscribed": [],
-}
+# Keep track of subscribed signals
+subscribed_signals: List[Tuple[str, Callable]] = []
 
 # Global registry for signal handlers registered via decorator
-dbus_signal_handlers = {}
+dbus_signal_handlers: Dict[str, Callable[..., Any]] = {}
+
+
+@dataclass
+class DbusInterface:
+    type: str
+    service: str
+    path: str
+    signals: dict[str, str]
+    interface: str | None = None
+
+    def __post_init__(self):
+        if not self.interface:
+            self.interface = self.service
+
+
+PREPARE_FOR_SLEEP = "systemd.login_on_prepare_for_sleep"
+PREPARE_FOR_SHUTDOWN = "systemd.login_on_prepare_for_shutdown"
+SCREENSAVER_ON_ACTIVE_CHANGED = "session.screensaver_on_active_changed"
+GNOME_SCREENSAVER_ON_ACTIVE_CHANGED = "session.gnome_screensaver_on_active_changed"
+NOTIFICATION_ON_ACTION_INVOKED = "session.notification_on_action_invoked"
+NOTIFICATION_ON_NOTIFICATION_CLOSED = "session.notification_on_notification_closed"
 
 INTERFACES = {
-    LOGIN_INTERFACE: {
-        "type": "system",
-        "service": "org.freedesktop.login1",
-        "path": "/org/freedesktop/login1",
-        "interface": LOGIN_INTERFACE,
-    },
-    SCREENSAVER_INTERFACE: {
-        "type": "session",
-        "service": SCREENSAVER_INTERFACE,
-        "path": "/org/freedesktop/ScreenSaver",
-        "interface": SCREENSAVER_INTERFACE,
-    },
-    SCREENSAVER_GNOME_INTERFACE: {
-        "type": "session",
-        "service": SCREENSAVER_GNOME_INTERFACE,
-        "path": "/org/gnome/ScreenSaver",
-        "interface": SCREENSAVER_GNOME_INTERFACE,
-    },
-    NOTIFICATIONS_INTERFACE: {
-        "type": "session",
-        "service": NOTIFICATIONS_INTERFACE,
-        "path": "/org/freedesktop/Notifications",
-        "interface": NOTIFICATIONS_INTERFACE,
-    },
+    interface.interface: interface
+    for interface in [
+        DbusInterface(
+            type="system",
+            service="org.freedesktop.login1",
+            path="/org/freedesktop/login1",
+            interface=LOGIN_INTERFACE,
+            signals={
+                "on_prepare_for_sleep": PREPARE_FOR_SLEEP,
+                "on_prepare_for_shutdown": PREPARE_FOR_SHUTDOWN,
+            },
+        ),
+        DbusInterface(
+            type="session",
+            service=SCREENSAVER_INTERFACE,
+            path="/org/freedesktop/ScreenSaver",
+            signals={"on_active_changed": SCREENSAVER_ON_ACTIVE_CHANGED},
+        ),
+        DbusInterface(
+            type="session",
+            service=SCREENSAVER_GNOME_INTERFACE,
+            path="/org/gnome/ScreenSaver",
+            signals={"on_active_changed": GNOME_SCREENSAVER_ON_ACTIVE_CHANGED},
+        ),
+    ]
 }
-
-
-async def get_interface(bus, service, path, interface) -> Optional[ProxyInterface]:
-    try:
-        introspection = await bus.introspect(service, path)
-        proxy = bus.get_proxy_object(service, path, introspection)
-        return proxy.get_interface(interface)
-    except DBusError:
-        return None
 
 
 class Dbus:
     session: MessageBus
     system: MessageBus
-    interfaces: dict[str, ProxyInterface] = {}
+    interfaces: Dict[str, ProxyInterface]
 
     async def init(self) -> None:
         self.system = await MessageBus(bus_type=BusType.SYSTEM).connect()
         self.session = await MessageBus(bus_type=BusType.SESSION).connect()
+        self.interfaces = {}
 
+    async def _get_interface(self, i: DbusInterface) -> Optional[ProxyInterface]:
+        if i.type == "system":
+            bus = self.system
+        else:
+            bus = self.session
+        try:
+            introspection = await bus.introspect(i.service, i.path)
+            proxy = bus.get_proxy_object(i.service, i.path, introspection)
+            return proxy.get_interface(
+                i.interface or i.service
+            )  # TODO :deduple fallback to service if no interface specified
+        except DBusError:
+            logger.warning(f"Failed to get D-Bus interface {i.interface} at {i.path}")
+            return None
+
+    @lru_cache
     async def get_interface(self, name: str) -> Optional[ProxyInterface]:
-        i = INTERFACES[name]
-        bus_type, service, path, interface = i["type"], i["service"], i["path"], i["interface"]
         iface = self.interfaces.get(name)
-        if iface is None:
-            if bus_type == "system":
-                bus = self.system
-            else:
-                bus = self.session
-            iface = await get_interface(bus, service, path, interface)
-            if iface is not None:
-                self.interfaces[name] = iface
-
-        return iface
+        if iface is not None:
+            return iface
+        self.interfaces[name] = await self._get_interface(INTERFACES[name])
+        return self.interfaces[name]
 
     async def register_signal(self, signal_alias: str, callback: Callable) -> None:
         """Register a signal handler"""
-        iface_name, signal_name = SIGNALS[signal_alias]["interface"], SIGNALS[signal_alias]["name"]
+        # TODO: optimize
+        for interface in INTERFACES.values():
+            if signal_alias in interface.signals.values():
+                iface_name = interface.interface
+                signal_name = interface.signals[signal_alias]
+
         iface = await self.get_interface(iface_name)
-        if iface is not None:
-            getattr(iface, signal_name)(callback)
-            logger.info(f"Registered signal callback for interface:{iface_name}, signal:{signal_name}")
-            SIGNALS["subscribed"].append((signal_alias, callback))
-        else:
-            logger.warning(f"Could not register signal callback for interface:{iface_name}, signal:{signal_name}")
+        if iface is None:
+            logger.warning(
+                f"Could not register signal callback for interface:{iface_name}, signal:{signal_name}"
+            )
+            return
+        getattr(iface, signal_name)(callback)
+        logger.info(
+            f"Registered signal callback for interface:{iface_name}, signal:{signal_name}"
+        )
+        subscribed_signals.append((signal_alias, callback))
 
 
 def dbus_signal_handler(signal_alias: str):
     """Decorator to mark a method as a D-Bus signal handler.
 
     Args:
-        signal_alias: The signal alias from SIGNALS (e.g., "system.login_on_prepare_for_sleep")
+        signal_alias: The signal alias, e.g., "system.login_on_prepare_for_sleep"
 
     Example:
         @dbus_signal_handler("system.login_on_prepare_for_sleep")
@@ -132,7 +140,7 @@ def dbus_signal_handler(signal_alias: str):
     def decorator(func: Callable) -> Callable:
         # Mark the function with metadata instead of registering immediately
         # This allows us to register bound methods later
-        func._dbus_signal_alias = signal_alias
+        setattr(func, "_dbus_signal_alias", signal_alias)
         return func
 
     return decorator
@@ -153,5 +161,6 @@ async def register_sensor_dbus_handlers(sensor: Any, dbus_instance: "Dbus") -> N
             # Register the bound method
             await dbus_instance.register_signal(signal_alias, attr)
             logger.debug(
-                f"Registered D-Bus handler on {sensor.__class__.__name__}.{attr_name} " f"for signal {signal_alias}"
+                f"Registered D-Bus handler on {sensor.__class__.__name__}.{attr_name} "
+                f"for signal {signal_alias}"
             )

@@ -133,64 +133,54 @@ class API:
                 if res.status == SC_INVALID_JSON:
                     logger.error(f"Invalid JSON {self.webhook_url}")
                 if res.status == SC_MOBILE_COMPONENT_NOT_LOADED:
-                    logger.error(f"The mobile_app component has not been loaded {self.webhook_url}")
+                    logger.error(
+                        f"The mobile_app component has not been loaded {self.webhook_url}"
+                    )
                 elif res.status == SC_INTEGRATION_DELETED:
-                    logger.error(f"The integration has been deleted, need to register again {self.webhook_url}")
+                    logger.error(
+                        f"The integration has been deleted, need to register again {self.webhook_url}"
+                    )
 
             return res
 
-    async def post(self, endpoint: str, data: str) -> ClientResponse:
-        """Send a POST request to the given Home Assisntat endpoint
-        Headers are set to the token and the body is set to the data
+    async def get(self, endpoint: str, data=None, json=None) -> ClientResponse:
+        return await self.request("GET", endpoint, data, json)
 
+    async def post(self, endpoint: str, data=None, json=None) -> ClientResponse:
+        return await self.request("POST", endpoint, data, json)
+
+    async def request(
+        self, method: str, endpoint: str, data=None, json=None
+    ) -> ClientResponse:
+        """Send a request to the given Home Assisntat endpoint.
+
+        :param method: The HTTP method to use (GET, POST, etc.)
         :param endpoint: The endpoint to send the request to (must have a leading /)
-        :param data: The data to send in the body of the request (json serialized)
-        :return: The response from Home Assisntat
+        :param data: Data to send in the body of the request (raw)
+        :param json: Data to send in the body of the request (JSON)
+        :return: The response from Home Assistant
         """
         # Ensure we have valid authentication before making the request
         await self._ensure_authenticated()
 
-        resp = await self.session.post(self.instance_url + endpoint, headers=self.headers, data=data)
+        async def _try():
+            return await self.session.request(
+                method,
+                self.instance_url + endpoint,
+                headers=self.headers,
+                data=data,
+                json=json,
+            )
+
+        resp = await _try()
 
         # Check for authentication errors and retry once if OAuth refresh might help
         if resp.status == SC_UNAUTHORIZED and self.oauth_tokens:
             # OAuth token might have just expired, try refreshing
             await self._ensure_authenticated()
-            resp = await self.session.post(self.instance_url + endpoint, headers=self.headers, data=data)
-
-        if resp.status == SC_UNAUTHORIZED:
-            raise AuthenticationError("Authentication failed or expired")
+            return await _try()
 
         return resp
-
-    async def get(self, endpoint: str) -> ClientResponse:
-        """Send a GET request to the given Home Assisntat endpoint
-        Headers are set to the token
-
-        :param endpoint: The endpoint to send the request to (must have a leading /)
-        :return: The response from Home Assisntat
-        """
-        # Ensure we have valid authentication before making the request
-        await self._ensure_authenticated()
-
-        resp = await self.session.get(self.instance_url + endpoint, headers=self.headers)
-
-        # Check for authentication errors and retry once if OAuth refresh might help
-        if resp.status == SC_UNAUTHORIZED and self.oauth_tokens:
-            # OAuth token might have just expired, try refreshing
-            await self._ensure_authenticated()
-            resp = await self.session.get(self.instance_url + endpoint, headers=self.headers)
-
-        if resp.status == SC_UNAUTHORIZED:
-            raise AuthenticationError("Authentication failed or expired")
-
-        return resp
-
-    def process_registration_data(self, data: RegistrationData) -> None:
-        """Process the data returned from the registration endpoint
-        :param data: The registration data
-        """
-        self.registration = data
 
 
 class Server:

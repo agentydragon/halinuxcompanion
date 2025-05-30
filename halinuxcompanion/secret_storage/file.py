@@ -41,16 +41,22 @@ def check_file_permissions(path: Path) -> None:
         )
 
     if file_stat.st_uid != os.getuid():
-        raise PermissionError(f"{path} is owned by uid {file_stat.st_uid}, not current user ({os.getuid()}).")
+        raise PermissionError(
+            f"{path} is owned by uid {file_stat.st_uid}, not current user ({os.getuid()})."
+        )
 
     parent = path.parent
     parent_stat = parent.stat()
 
     if parent_stat.st_mode & stat.S_IWOTH:
-        raise PermissionError(f"{parent} is world-writable. Fix with: chmod o-w {parent}")
+        raise PermissionError(
+            f"{parent} is world-writable. Fix with: chmod o-w {parent}"
+        )
 
     if parent_stat.st_uid not in (os.getuid(), 0):
-        raise PermissionError(f"{parent} owned by uid {parent_stat.st_uid}, not current user or root.")
+        raise PermissionError(
+            f"{parent} owned by uid {parent_stat.st_uid}, not current user or root."
+        )
 
 
 class FileSecretStorage(SecretStorage):
@@ -78,35 +84,39 @@ class FileSecretStorage(SecretStorage):
         # Check parent directory security
         parent = path.parent
         if parent.stat().st_mode & stat.S_IWOTH:
-            raise PermissionError(f"Parent directory {parent} is world-writable. Fix with: chmod o-w {parent}")
+            raise PermissionError(
+                f"Parent directory {parent} is world-writable. Fix with: chmod o-w {parent}"
+            )
 
     def _write_secure_file(self, file_path: Path, content: str) -> None:
         """Write content to file with security checks."""
         import tempfile
-        
+
         # Ensure directory exists and is secure
         self._ensure_secure_directory(file_path.parent)
-        
+
         # Write with temporary file to ensure atomicity
         # Use a unique temp file to avoid conflicts in concurrent access
-        fd, temp_path_str = tempfile.mkstemp(dir=file_path.parent, prefix=file_path.stem)
+        fd, temp_path_str = tempfile.mkstemp(
+            dir=file_path.parent, prefix=file_path.stem
+        )
         temp_path = Path(temp_path_str)
-        
+
         try:
             # Write content to temp file
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             # Set secure permissions
             temp_path.chmod(0o600)
-            
+
             # Atomically replace the target file
             temp_path.replace(file_path)
         except Exception:
             # Clean up temp file on error
             try:
                 temp_path.unlink()
-            except:
+            except Exception:
                 pass
             raise
 

@@ -136,7 +136,9 @@ class OAuthFlow:
 </html>"""
         return web.Response(text=html, content_type="text/html")
 
-    async def handle_callback(self, request: web.Request, auth_code_future: asyncio.Future[str]) -> web.Response:
+    async def handle_callback(
+        self, request: web.Request, auth_code_future: asyncio.Future[str]
+    ) -> web.Response:
         """Handle the OAuth callback from Home Assistant."""
         try:
             code = request.query.get("code")
@@ -149,18 +151,22 @@ class OAuthFlow:
                 raise AuthenticationError(error_msg)
 
             if state != self.state:
-                raise AuthenticationError(f"State mismatch in OAuth callback. Expected: {self.state}, Got: {state}")
+                raise AuthenticationError(
+                    f"State mismatch in OAuth callback. Expected: {self.state}, Got: {state}"
+                )
 
             # Set the auth code in the future
             auth_code_future.set_result(code)
-            return self._make_html_response("Authentication successful!", "You can close this window now.")
+            return self._make_html_response(
+                "Authentication successful!", "You can close this window now."
+            )
 
         except AuthenticationError as e:
             logger.error(str(e))
             auth_code_future.set_exception(e)
             return self._make_html_response("Authentication failed", str(e))
 
-    async def _request_token(self, session: ClientSession, operation: str, data: dict) -> OAuthTokens:
+    async def _request_token(self, session: ClientSession, operation: str, data: dict):
         """Common method to request tokens from Home Assistant."""
         async with session.post(
             f"{self.ha_url}/auth/token",
@@ -168,30 +174,40 @@ class OAuthFlow:
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         ) as resp:
             if resp.status != 200:
-                error_text = await resp.text()
-                raise AuthenticationError(f"Token {operation} failed: {resp.status} - {error_text}")
+                raise AuthenticationError(
+                    f"Token {operation} failed: {resp.status} - {await resp.text()}"
+                )
 
             token_data = await resp.json()
         expires_delta = timedelta(seconds=token_data["expires_in"])
         token_data["expires_at"] = (expires_at := datetime.now() + expires_delta)
 
-        logger.info(f"Token {operation} successful, expires at {expires_at.isoformat()} " f"({expires_delta} from now)")
-        return OAuthTokens.model_validate(token_data)
+        logger.info(
+            f"Token {operation} successful, expires at {expires_at.isoformat()} "
+            f"({expires_delta} from now)"
+        )
+        return token_data
 
-    async def exchange_code_for_token(self, session: ClientSession, auth_code: str) -> OAuthTokens:
+    async def exchange_code_for_token(
+        self, session: ClientSession, auth_code: str
+    ) -> OAuthTokens:
         """Exchange the authorization code for access and refresh tokens."""
-        return await self._request_token(
-            session,
-            "exchange",
-            {
-                "grant_type": "authorization_code",
-                "code": auth_code,
-            },
+        return OAuthTokens.model_validate(
+            await self._request_token(
+                session,
+                "exchange",
+                {
+                    "grant_type": "authorization_code",
+                    "code": auth_code,
+                },
+            )
         )
 
-    async def refresh_access_token(self, session: ClientSession, refresh_token: str) -> OAuthTokens:
+    async def refresh_access_token(
+        self, session: ClientSession, refresh_token: str
+    ) -> OAuthTokens:
         """Refresh the access token using the refresh token."""
-        return await self._request_token(
+        refreshed = await self._request_token(
             session,
             "refresh",
             {
@@ -199,6 +215,8 @@ class OAuthFlow:
                 "refresh_token": refresh_token,
             },
         )
+        # Refresh response does not include refresh_token, so we need to keep it
+        return OAuthTokens(refresh_token=refresh_token, **refreshed)
 
     async def run(self, storage: "SecretStorage") -> None:
         """Run the complete OAuth authentication flow.
@@ -206,6 +224,7 @@ class OAuthFlow:
         Args:
             storage: Secret storage backend to save tokens
         """
+        print(f"Starting OAuth authentication flow with {self.ha_url}")
         # Check if using IP address for OAuth
         if is_url_using_ip(self.ha_url):
             raise AuthenticationError(
@@ -221,7 +240,10 @@ class OAuthFlow:
         # Set up temporary web server for callback
         app = web.Application()
         auth_code_future = asyncio.get_event_loop().create_future()
-        app.router.add_get("/auth/callback", partial(self.handle_callback, auth_code_future=auth_code_future))
+        app.router.add_get(
+            "/auth/callback",
+            partial(self.handle_callback, auth_code_future=auth_code_future),
+        )
 
         logger.info(f"Starting OAuth callback server on port {self.redirect_port}")
 
@@ -230,7 +252,7 @@ class OAuthFlow:
         try:
             await web.TCPSite(runner, self.redirect_host, self.redirect_port).start()
 
-            print(f"\nOpening browser for authentication...")
+            print("\nOpening browser for authentication...")
             print(f"If browser doesn't open, please visit: {self.authorization_url}\n")
             webbrowser.open(self.authorization_url)
 
@@ -275,10 +297,12 @@ async def ensure_valid_oauth_token(
     # Try to refresh
     logger.info("Access token expired, attempting to refresh...")
     try:
-        new_tokens = await OAuthFlow(ha_url).refresh_access_token(session, oauth_tokens.refresh_token)
+        new_tokens = await OAuthFlow(ha_url).refresh_access_token(
+            session, oauth_tokens.refresh_token
+        )
     except AuthenticationError:
         raise AuthenticationError(
-            f"OAuth token refresh failed.\n"
+            "OAuth token refresh failed.\n"
             "Your authentication has expired. Please re-authenticate:\n"
             "Run: halinuxcompanion --oauth"
         )

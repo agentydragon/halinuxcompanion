@@ -1,7 +1,6 @@
 """Battery subsensors that work with any battery data provider."""
 
 import logging
-from typing import Any, Dict, List, Optional
 
 from halinuxcompanion.sensor_base import BaseSensor
 from .battery_provider import BatteryData, BatteryDataProvider
@@ -16,13 +15,15 @@ class BatterySubSensor(BaseSensor):
     sensor_field: str
     name_suffix: str
 
-    def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData, **sensor_kwargs):
+    def __init__(
+        self, provider: BatteryDataProvider, battery_data: BatteryData, **sensor_kwargs
+    ):
         battery_id = battery_data.battery_id
 
         super().__init__(
             instance_id=battery_id,
             name=f"{battery_data.name} {self.name_suffix}",
-            **sensor_kwargs
+            **sensor_kwargs,
         )
         self._provider = provider
         self._battery_id = battery_id
@@ -40,6 +41,7 @@ class BatterySubSensor(BaseSensor):
 
 # Generic subsensor classes that can be used by any provider
 
+
 class TimeToEmptySensor(BatterySubSensor):
     """Battery time to empty sensor."""
 
@@ -48,7 +50,8 @@ class TimeToEmptySensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="duration",
             native_unit_of_measurement="s",
             state_class="measurement",
@@ -64,7 +67,8 @@ class TimeToFullSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="duration",
             native_unit_of_measurement="s",
             state_class="measurement",
@@ -80,7 +84,8 @@ class TemperatureSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="temperature",
             native_unit_of_measurement="°C",
             state_class="measurement",
@@ -96,7 +101,8 @@ class VoltageSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="voltage",
             native_unit_of_measurement="V",
             state_class="measurement",
@@ -112,7 +118,8 @@ class PowerSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="power",
             native_unit_of_measurement="W",
             state_class="measurement",
@@ -142,7 +149,8 @@ class HealthSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             unit_of_measurement="%",
             state_class="measurement",
             entity_category="diagnostic",
@@ -157,7 +165,8 @@ class ChargeCyclesSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             state_class="total_increasing",
             entity_category="diagnostic",
         )
@@ -171,7 +180,8 @@ class EnergySensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="energy",
             native_unit_of_measurement="Wh",
             state_class="measurement",
@@ -187,7 +197,8 @@ class EnergyFullSensor(BatterySubSensor):
 
     def __init__(self, provider: BatteryDataProvider, battery_data: BatteryData):
         super().__init__(
-            provider, battery_data,
+            provider,
+            battery_data,
             device_class="energy",
             native_unit_of_measurement="Wh",
             state_class="measurement",

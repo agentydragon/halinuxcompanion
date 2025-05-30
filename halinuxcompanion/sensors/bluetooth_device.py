@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from halinuxcompanion.sensor_base import BaseSensor, SensorMetadata
 
@@ -32,9 +32,11 @@ class BluetoothDeviceSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
+    async def discover_sensors(
+        cls, config: Optional[Dict[str, Any]] = None
+    ) -> List[BaseSensor]:
         """Discover available Bluetooth devices."""
-        sensors = []
+        sensors: List[BaseSensor] = []
 
         if not config:
             logger.debug("No config provided for Bluetooth device sensor")
@@ -84,9 +86,13 @@ class BluetoothDeviceSensor(BaseSensor):
             import dbus
 
             bus = dbus.SystemBus()
-            manager = dbus.Interface(bus.get_object("org.bluez", "/"), "org.freedesktop.DBus.ObjectManager")
+            manager = dbus.Interface(
+                bus.get_object("org.bluez", "/"), "org.freedesktop.DBus.ObjectManager"
+            )
 
-            objects = await asyncio.get_event_loop().run_in_executor(None, manager.GetManagedObjects)
+            objects = await asyncio.get_event_loop().run_in_executor(
+                None, manager.GetManagedObjects
+            )
 
             # Find our device
             for interfaces in objects.values():
@@ -97,8 +103,22 @@ class BluetoothDeviceSensor(BaseSensor):
 
             return None
         except Exception:
-            logger.debug(f"Failed to get device info for {self.device_address}", exc_info=True)
+            logger.debug(
+                f"Failed to get device info for {self.device_address}", exc_info=True
+            )
             return None
+
+    async def update(self) -> None:
+        """Update the sensor state."""
+        state = await self.get_state()
+        if state is not None:
+            self.state = state
+        else:
+            self.state = "unavailable"
+
+    async def get_state(self) -> Any:
+        """Get the current state of the sensor. To be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement get_state()")
 
 
 class BluetoothBatteryLevelSensor(BluetoothDeviceSensor):
@@ -122,7 +142,10 @@ class BluetoothBatteryLevelSensor(BluetoothDeviceSensor):
         """Get the battery level."""
         device_info = await self._get_device_info()
         # Check if battery level is available
-        if device_info and (battery_level := device_info.get("BatteryPercentage")) is not None:
+        if (
+            device_info
+            and (battery_level := device_info.get("BatteryPercentage")) is not None
+        ):
             return int(battery_level)
         return None
 
@@ -209,7 +232,9 @@ class BluetoothVolumeSensor(BluetoothDeviceSensor):
                     if self.device_address.replace(":", "_") in source.name:
                         return int(pulse.volume_get_all_chans(source) * 100)
         except Exception:
-            logger.debug(f"Failed to get volume for {self.device_address}", exc_info=True)
+            logger.debug(
+                f"Failed to get volume for {self.device_address}", exc_info=True
+            )
 
         return None
 
@@ -241,17 +266,23 @@ class BluetoothPlaybackStateSensor(BluetoothDeviceSensor):
                 if service.startswith("org.mpris.MediaPlayer2."):
                     try:
                         player = bus.get_object(service, "/org/mpris/MediaPlayer2")
-                        props = dbus.Interface(player, "org.freedesktop.DBus.Properties")
+                        props = dbus.Interface(
+                            player, "org.freedesktop.DBus.Properties"
+                        )
 
                         # Check if this player is using our Bluetooth device
                         # This is a heuristic - might need device-specific logic
-                        playback_status = props.Get("org.mpris.MediaPlayer2.Player", "PlaybackStatus")
+                        playback_status = props.Get(
+                            "org.mpris.MediaPlayer2.Player", "PlaybackStatus"
+                        )
                         if playback_status:
                             return playback_status.lower()  # playing, paused, stopped
                     except Exception:
                         continue
         except Exception:
-            logger.debug(f"Failed to get playback state for {self.device_address}", exc_info=True)
+            logger.debug(
+                f"Failed to get playback state for {self.device_address}", exc_info=True
+            )
 
         return "unknown"
 
@@ -275,7 +306,7 @@ class BluetoothDebugSensor(BluetoothDeviceSensor):
         device_info = await self._get_device_info()
         if device_info:
             # Convert D-Bus types to Python native types
-            debug_info = {}
+            debug_info: Dict[str, Any] = {}
             for key, value in device_info.items():
                 try:
                     # Handle various D-Bus types

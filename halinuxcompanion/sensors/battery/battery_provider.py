@@ -1,5 +1,7 @@
 """Battery data provider base classes and interfaces."""
 
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -47,7 +49,9 @@ class BatteryData:
     serial: Optional[str] = None
 
     # Status flags
-    warning_level: Optional[int] = None  # UPower warning level: 1=None, 2=Discharging, 3=Low, 4=Critical, 5=Action
+    warning_level: Optional[int] = (
+        None  # UPower warning level: 1=None, 2=Discharging, 3=Low, 4=Critical, 5=Action
+    )
 
     def get_icon(self) -> str:
         """Get appropriate battery icon based on state and level."""

@@ -19,7 +19,9 @@ class PsutilBatteryProvider(BatteryDataProvider):
 
     async def discover_batteries(self) -> List[str]:
         """Discover available batteries using psutil."""
-        battery = await asyncio.get_event_loop().run_in_executor(None, psutil.sensors_battery)
+        battery = await asyncio.get_event_loop().run_in_executor(
+            None, psutil.sensors_battery
+        )
         if battery:
             return [PSUTIL_BATTERY_ID]
         return []
@@ -29,7 +31,9 @@ class PsutilBatteryProvider(BatteryDataProvider):
         if battery_id != PSUTIL_BATTERY_ID:
             return None
 
-        battery = await asyncio.get_event_loop().run_in_executor(None, psutil.sensors_battery)
+        battery = await asyncio.get_event_loop().run_in_executor(
+            None, psutil.sensors_battery
+        )
         if not battery:
             return None
 
@@ -47,5 +51,7 @@ class PsutilBatteryProvider(BatteryDataProvider):
             percent=battery.percent,
             plugged=battery.power_plugged,
             state=state,
-            time_to_empty=battery.secsleft if battery.secsleft != -1 and not battery.power_plugged else None,
+            time_to_empty=battery.secsleft
+            if battery.secsleft != -1 and not battery.power_plugged
+            else None,
         )

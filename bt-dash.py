@@ -3,8 +3,8 @@
 # deps:  pydbus  PyGObject   (apt install python3-pydbus python3-gi)
 #        rich (optional, prettier table)  pip install rich
 
-import os
-import shutil
+
+from typing import Any, Dict
 
 from gi.repository import GLib
 from pydbus import SystemBus
@@ -23,7 +23,7 @@ objs = om.GetManagedObjects()  # global cache we keep in sync
 adapter_path = next(p for p, i in objs.items() if "org.bluez.Adapter1" in i)
 adapter = bus.get("org.bluez", adapter_path)
 
-devices = {}  # addr  -> info-dict
+devices: Dict[str, Dict[str, Any]] = {}  # addr  -> info-dict
 
 
 # ───────────────── helper funcs ──────────────────
@@ -65,7 +65,9 @@ def transport_props(dev_path):
 
 
 def codec_name(code):
-    return {0x00: "SBC", 0x01: "SBC", 0x02: "AAC", 0x03: "aptX", 0xFF: "Vendor"}.get(code, "")
+    return {0x00: "SBC", 0x01: "SBC", 0x02: "AAC", 0x03: "aptX", 0xFF: "Vendor"}.get(
+        code, ""
+    )
 
 
 def update_entry(path, changed=None):
@@ -150,8 +152,8 @@ def render():
         tbl.add_row(
             d["alias"],
             d["addr"],
-            f'{d["rssi"]} dBm' if d.get("rssi") is not None else "-",
-            f'{d["bat"]:.0f}%' if d.get("bat") is not None else "-",
+            f"{d['rssi']} dBm" if d.get("rssi") is not None else "-",
+            f"{d['bat']:.0f}%" if d.get("bat") is not None else "-",
             d.get("state") or ("on" if d["connected"] else "-"),
             d.get("codec", ""),
             str(d.get("delay", "")),

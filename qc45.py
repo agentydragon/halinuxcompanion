@@ -7,6 +7,7 @@ the standard BLE Battery Service 0x180F / characteristic 0x2A19).
 ▪ If you run as a normal user: give python CAP_NET_RAW + CAP_NET_ADMIN
   sudo setcap cap_net_raw,cap_net_admin+eip $(readlink -f $(which python3))
 """
+
 import argparse
 import asyncio
 import sys

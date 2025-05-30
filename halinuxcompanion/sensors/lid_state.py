@@ -1,5 +1,7 @@
 """Laptop lid state sensor implementation."""
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -43,7 +45,9 @@ class LidStateSensor(BaseSensor):
         )
 
     @classmethod
-    async def discover_sensors(cls, config: Optional[Dict[str, Any]] = None) -> list["BaseSensor"]:
+    async def discover_sensors(
+        cls, config: Optional[Dict[str, Any]] = None
+    ) -> list["BaseSensor"]:
         """Discover available lid state sensors."""
         # Try to find a lid state file
         for path_str in LID_STATE_PATHS:
