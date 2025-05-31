@@ -26,6 +26,7 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 dependencies = [
+    "pydantic>=2",
     "aiohttp>=3.9.5",
     "psutil>=5.8.0",
     "dbus-next>=0.2.3",

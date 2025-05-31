@@ -1,19 +1,11 @@
 """Hierarchical hardware configuration models."""
 
-from typing import List, Literal, Optional
+import re
+from typing import Annotated, List, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
-
-class SensorInfo(BaseModel):
-    """Definition of a sensor type."""
-
-    type: Literal["sensor", "binary_sensor"] = "sensor"
-    name: str
-    unit: Optional[str] = None
-    device_class: Optional[str] = None
-    state_class: Optional[str] = None
-    icon: Optional[str] = None
+MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 
 
 class HardwareClassConfig(BaseModel):
@@ -69,14 +61,22 @@ class LidConfig(HardwareClassConfig):
     # Single binary_sensor for lid open/closed
 
 
+Mac = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$",  # XX:XX:XX:XX:XX:XX
+        strip_whitespace=True,
+    ),
+]
+
+
 class BluetoothConfig(HardwareClassConfig):
     """Configuration for bluetooth hardware class."""
 
-    devices: List[str] = Field(
+    devices: List[Mac] = Field(
         default_factory=list,
-        description="List of Bluetooth device MAC addresses to monitor",
+        description="List of Bluetooth MAC addresses to monitor",
     )
-    # Creates binary_sensor per device for connected status
 
 
 class UptimeConfig(HardwareClassConfig):

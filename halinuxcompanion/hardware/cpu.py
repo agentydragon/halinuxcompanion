@@ -8,71 +8,51 @@ from typing import List
 import psutil
 
 from ..hardware_base import (
+    DeviceClass,
     HardwareClass,
-    HardwarePiece,
     HardwareSensor,
     PerPieceUpdateMixin,
+    StateClass,
 )
-from ..hardware_config import CPUConfig, SensorInfo
+from ..hardware_config import CPUConfig
 
 logger = logging.getLogger(__name__)
 
 
-class CPUPiece(HardwarePiece):
-    def __init__(self) -> None:
-        super().__init__("cpu")
-        self.usage_sensor: HardwareSensor | None = None
-        self.frequency_sensor: HardwareSensor | None = None
-
-    async def update(self) -> None:
-        if self.usage_sensor:
-            # Use interval=0 for non-blocking call. This gives CPU usage since last call,
-            # which is good for periodic updates. For the first call, it may return 0.0.
-            self.usage_sensor.state = psutil.cpu_percent(interval=0)
-
-        if self.frequency_sensor and (freq := psutil.cpu_freq()):
-            self.frequency_sensor.state = freq.current  # MHz
-
-    def get_sensors(self) -> List[HardwareSensor]:
-        """Get all sensors for this piece."""
-        return list(filter(None, [self.usage_sensor, self.frequency_sensor]))
-
-
 class CPUHardwareClass(PerPieceUpdateMixin, HardwareClass):
-    hardware_class = "cpu"
     config_field = "cpu"
 
     def __init__(self, config: CPUConfig):
         super().__init__(config)
         self.config: CPUConfig = config
+        self.usage_sensor = HardwareSensor(
+            unique_id="cpu:usage_percent",
+            name="CPU Usage",
+            unit="%",
+            device_class=None,
+            state_class=StateClass.MEASUREMENT,
+            icon="mdi:cpu-64-bit",
+        )
+        self.frequency_sensor = HardwareSensor(
+            unique_id="cpu:frequency",
+            name="CPU Frequency",
+            unit="MHz",
+            device_class=DeviceClass.FREQUENCY,
+            state_class=StateClass.MEASUREMENT,
+            icon="mdi:speedometer",
+        )
 
     async def discover_sensors(self) -> List[HardwareSensor]:
         """Discover and create sensors for CPU."""
-        piece = CPUPiece()
-        piece.usage_sensor = HardwareSensor(
-            hardware_class=self.hardware_class,
-            hardware_id=piece.hardware_id,
-            sensor_type_name="usage_percent",
-            sensor_info=SensorInfo(
-                name="CPU Usage",
-                unit="%",
-                device_class=None,
-                state_class="measurement",
-                icon="mdi:cpu-64-bit",
-            ),
-            hardware_piece=piece,
-        )
-        piece.frequency_sensor = HardwareSensor(
-            hardware_class=self.hardware_class,
-            hardware_id=piece.hardware_id,
-            sensor_type_name="frequency",
-            sensor_info=SensorInfo(
-                name="CPU Frequency",
-                unit="MHz",
-                device_class="frequency",
-                state_class="measurement",
-                icon="mdi:speedometer",
-            ),
-            hardware_piece=piece,
-        )
-        return piece.get_sensors()
+        return [self.usage_sensor, self.frequency_sensor]
+
+    async def update_all_sensors(self) -> None:
+        # Use interval=0 for non-blocking call. This gives CPU usage since last call,
+        # which is good for periodic updates. For the first call, it may return 0.0.
+        self.usage_sensor.state = psutil.cpu_percent(interval=0)
+        self.frequency_sensor.state = (
+            freq.current if (freq := psutil.cpu_freq()) else None
+        )  # MHz
+
+    def get_sensors(self) -> List[HardwareSensor]:
+        return [self.usage_sensor, self.frequency_sensor]

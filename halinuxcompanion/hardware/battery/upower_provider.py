@@ -42,8 +42,9 @@ class UPowerBatteryProvider(BatteryDataProvider):
     async def _get_proxy(self, path: str):
         """Get cached proxy or create new one."""
         if path not in self._proxies:
+            logger.info(f"Looking for proxy for {path}")
             dbus = await self._ensure_dbus()
-            introspection = dbus.introspect(UPOWER_BUS, path)
+            introspection = await dbus.introspect(UPOWER_BUS, path)
             self._proxies[path] = dbus.get_proxy_object(UPOWER_BUS, path, introspection)
         return self._proxies[path]
 

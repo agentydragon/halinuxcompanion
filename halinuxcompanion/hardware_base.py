@@ -4,9 +4,12 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from enum import Enum
+from typing import Any, Dict, List, Type, TypeVar
 
-from .hardware_config import HardwareClassConfig, SensorInfo
+from pydantic import BaseModel, Field
+
+from .hardware_config import HardwareClassConfig
 
 logger = logging.getLogger(__name__)
 
@@ -39,63 +42,94 @@ class HardwarePiece:
         self.hardware_id = hardware_id
 
 
-class HardwareSensor:
+class StateClass(str, Enum):
+    TOTAL_INCREASING = "total_increasing"
+    MEASUREMENT = "measurement"
+    TOTAL = "total"
+
+
+class SensorType(str, Enum):
+    SENSOR = "sensor"
+    BINARY_SENSOR = "binary_sensor"
+
+
+"""
+  - apparent_power
+  - conductivity
+  - data_rate
+  - date
+  - distance
+  - energy
+  - energy_distance
+  - enum
+  - power_factor
+  - pressure
+  - reactive_power
+  - signal_strength
+  - sound_pressure
+  - speed
+  - timestamp
+  - unit_price
+  - volume
+  """
+
+
+class DeviceClass(str, Enum):
+    BATTERY = "battery"
+    TEMPERATURE = "temperature"
+    VOLTAGE = "voltage"
+    DURATION = "duration"
+    DATA_SIZE = "data_size"
+    POWER = "power"
+    CURRENT = "current"
+    ENERGY = "energy"
+    FREQUENCY = "frequency"
+    SIGNAL_STRENGTH = "signal_strength"
+    ENERGY_STORAGE = "energy_storage"
+    # ^- validated
+
+    # Add more device classes as needed
+
+    # TODO: biary - validate:
+    OPENING = "opening"
+    CONNECTIVITY = "connectivity"
+
+
+"""
+- battery - Low battery (on = low)
+- battery_charging - Charging status
+- co / carbon_monoxide - Carbon monoxide detection
+- cold - Cold detection
+- door - Door open/closed
+- light - Light detection
+- lock - Lock open/closed
+- moving - Moving/stopped
+- opening - Generic opening
+- plug - Plugged in status
+- power - Power detection
+- presence - Home/away
+- running - Running status
+- tamper - Tamper detection
+- update - Update available (deprecated)
+- vibration - Vibration detection
+- window - Window open/closed
+"""
+
+
+class HardwareSensor(BaseModel):
     """A sensor that belongs to a specific hardware piece."""
 
-    def __init__(
-        self,
-        hardware_class: str,
-        hardware_id: str,
-        sensor_type_name: str,
-        sensor_info: SensorInfo,
-        hardware_piece: HardwarePiece,
-    ):
-        """Initialize a hardware sensor.
+    type: SensorType = SensorType.SENSOR
+    unique_id: str
+    name: str
+    unit: str | None = None  # TODO: ... of_measurement
+    device_class: DeviceClass | None = None
+    state_class: StateClass = StateClass.MEASUREMENT
+    icon: str | None = None
 
-        Args:
-            hardware_class: The hardware class (e.g., "battery", "network")
-            hardware_id: The specific hardware piece ID (e.g., "BAT0", "eth0")
-            sensor_type_name: The type of sensor (e.g., "charge_level", "tx_bytes")
-            sensor_info: SensorInfo object with sensor metadata
-            hardware_piece: Optional hardware piece (for naming/metadata only)
-        """
-        self.hardware_class = hardware_class
-        self.hardware_id = hardware_id
-        self.sensor_type_name = sensor_type_name
-        self.sensor_info = sensor_info
-        self._hardware_piece = hardware_piece
-
-        # Sensor state - will be populated by the hardware class
-        self.state: Any = None
-        self.attributes: Dict[str, Any] = {}
-
-    @property
-    def sensor_type(self) -> str:
-        """Sensor type for HA (sensor or binary_sensor)"""
-        return self.sensor_info.type
-
-    @property
-    def unique_id(self) -> str:
-        return "_".join([self.hardware_class, self.hardware_id, self.sensor_type_name])
-
-    @property
-    def native_unit_of_measurement(self) -> Optional[str]:
-        """Get the native unit of measurement for this sensor."""
-        return self.sensor_info.unit
-
-    @property
-    def name(self) -> str:
-        # Use device name if available (e.g., for bluetooth devices)
-        if (
-            self._hardware_piece
-            and hasattr(self._hardware_piece, "device_name")
-            and self._hardware_piece.device_name
-        ):
-            display_name = self._hardware_piece.device_name
-        else:
-            display_name = self.hardware_id
-        # Format: "Hardware ID - Sensor Type"
-        return f"{display_name} - {self.sensor_info.name}"
+    # Sensor state - will be populated by the hardware class
+    state: Any = None
+    attributes: dict[str, Any] = Field(default_factory=dict)
 
 
 class HardwareProvider(ABC):

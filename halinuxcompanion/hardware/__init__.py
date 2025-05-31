@@ -1,6 +1,6 @@
 """Hardware class implementations."""
 
-from .battery import BatteryHardwareClass
+from .battery_hardware import BatteryHardwareClass
 from .network import NetworkHardwareClass
 from .cpu import CPUHardwareClass
 from .memory import MemoryHardwareClass

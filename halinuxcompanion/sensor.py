@@ -17,7 +17,7 @@ from halinuxcompanion.hardware import (
     TemperatureHardwareClass,
     UptimeHardwareClass,
 )
-from halinuxcompanion.hardware.battery import BatteryHardwareClass
+from halinuxcompanion.hardware.battery_hardware import BatteryHardwareClass
 from halinuxcompanion.hardware_base import HardwareClass, HardwareSensor
 
 if TYPE_CHECKING:
@@ -84,9 +84,9 @@ class SensorManager:
                     "data": [
                         {
                             "attributes": sensor.attributes,
-                            "icon": sensor.sensor_info.icon,
+                            "icon": sensor.icon,
                             "state": sensor.state,
-                            "type": sensor.sensor_info.type,
+                            "type": sensor.type,
                             "unique_id": sensor.unique_id,
                         }
                         for sensor in self.sensors
@@ -151,15 +151,15 @@ class SensorManager:
         """Register a single sensor with Home Assistant."""
         data = {
             "attributes": sensor.attributes,
-            "device_class": sensor.sensor_info.device_class,
-            "icon": sensor.sensor_info.icon,
-            "name": sensor.sensor_info.name,
+            "device_class": sensor.device_class,
+            "icon": sensor.icon,
+            "name": sensor.name,
             "state": sensor.state,
-            "type": sensor.sensor_info.type,
+            "type": sensor.type,
             "unique_id": sensor.unique_id,
-            "unit_of_measurement": sensor.sensor_info.unit,
-            "state_class": sensor.sensor_info.state_class,
-            "entity_category": None,  # sensor.sensor_info.entity_category,
+            "unit_of_measurement": sensor.unit,
+            "state_class": sensor.state_class,
+            "entity_category": None,  # sensor.entity_category,
         }
         payload = {"data": data, "type": "register_sensor"}
         logger.info(f"Registering sensor: {sensor.unique_id}")

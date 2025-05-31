@@ -8,12 +8,14 @@ from typing import List, Optional
 import psutil
 
 from ..hardware_base import (
+    DeviceClass,
     HardwareClass,
     HardwarePiece,
     HardwareSensor,
     PerPieceUpdateMixin,
+    StateClass,
 )
-from ..hardware_config import NetworkConfig, SensorInfo
+from ..hardware_config import NetworkConfig
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,10 @@ logger = logging.getLogger(__name__)
 class NetworkInterfacePiece(HardwarePiece):
     """Represents a single network interface."""
 
-    def __init__(self, hardware_id: str):
+    def __init__(
+        self,
+        hardware_id: str,
+    ):
         super().__init__(hardware_id)
         self.status_sensor: Optional[HardwareSensor] = None
         self.tx_bytes_sensor: Optional[HardwareSensor] = None
@@ -35,8 +40,8 @@ class NetworkInterfacePiece(HardwarePiece):
         stats = psutil.net_if_stats().get(self.hardware_id)
         # Extract addresses and sort deterministically. 2 = AF_INET, 10 = AF_INET6
         addrs = psutil.net_if_addrs().get(self.hardware_id, [])
-        ipv4_addrs = sorted(addr.address for addr in addrs if addr.family == 2)
-        ipv6_addrs = sorted(addr.address for addr in addrs if addr.family == 10)
+        ipv4_addrs = sorted(a.address for a in addrs if a.family == 2)
+        ipv6_addrs = sorted(a.address for a in addrs if a.family == 10)
         io_counters = psutil.net_io_counters(pernic=True).get(self.hardware_id)
         for sensor, value in [
             (self.status_sensor, stats.isup if stats else None),
@@ -66,7 +71,6 @@ class NetworkInterfacePiece(HardwarePiece):
 
 
 class NetworkHardwareClass(PerPieceUpdateMixin, HardwareClass):
-    hardware_class = "network"
     config_field = "network"
 
     def __init__(self, config: NetworkConfig):
@@ -81,61 +85,55 @@ class NetworkHardwareClass(PerPieceUpdateMixin, HardwareClass):
             logger.warning(
                 f"Configured network interfaces not found on system: {'  '.join(sorted(missing))}"
             )
+        all_sensors = []
         for iface in configured & available_interfaces:
             piece = NetworkInterfacePiece(iface)
+            self._hardware_pieces.append(piece)
 
-            def _sensor(
-                sensor_type_name: str, sensor_info: SensorInfo
-            ) -> HardwareSensor:
+            def _sensor(id, name, **kwargs):
+                if len(available_interfaces) > 1:
+                    name = f"{name} ({iface})"
                 return HardwareSensor(
-                    hardware_class=self.hardware_class,
-                    hardware_id=piece.hardware_id,
-                    hardware_piece=piece,
-                    sensor_type_name=sensor_type_name,
-                    sensor_info=sensor_info,
+                    unique_id=f"net:{piece.hardware_id}:{id}",
+                    name=name,
+                    **kwargs,
                 )
 
             if self.config.show_status:
                 piece.status_sensor = _sensor(
-                    "status",
-                    SensorInfo(
-                        type="binary_sensor", name="Status", device_class="connectivity"
-                    ),
+                    id="status",
+                    type="binary_sensor",
+                    name="Status",
+                    device_class=DeviceClass.CONNECTIVITY,
                 )
 
             if self.config.show_counters:
                 piece.tx_bytes_sensor = _sensor(
-                    "tx_bytes",
-                    SensorInfo(
-                        name="TX Bytes",
-                        unit="B",
-                        device_class="data_size",
-                        state_class="total_increasing",
-                    ),
+                    id="tx_bytes",
+                    name="TX Bytes",
+                    unit="B",
+                    device_class=DeviceClass.DATA_SIZE,
+                    state_class=StateClass.TOTAL_INCREASING,
                 )
                 piece.rx_bytes_sensor = _sensor(
-                    "rx_bytes",
-                    SensorInfo(
-                        name="RX Bytes",
-                        unit="B",
-                        device_class="data_size",
-                        state_class="total_increasing",
-                    ),
+                    id="rx_bytes",
+                    name="RX Bytes",
+                    unit="B",
+                    device_class=DeviceClass.DATA_SIZE,
+                    state_class=StateClass.TOTAL_INCREASING,
                 )
 
             if self.config.show_ip_addresses:
                 piece.ipv4_sensor = _sensor(
-                    "ipv4_address",
-                    SensorInfo(name="IPv4 Address", icon="mdi:ip-network"),
+                    id="ipv4_address",
+                    name="IPv4 Address",
+                    icon="mdi:ip-network",
                 )
                 piece.ipv6_sensor = _sensor(
-                    "ipv6_address",
-                    SensorInfo(name="IPv6 Address", icon="mdi:ip-network"),
+                    id="ipv6_address",
+                    name="IPv6 Address",
+                    icon="mdi:ip-network",
                 )
-
-        # Construct all_sensors at the end
-        all_sensors = []
-        for piece in self._hardware_pieces:
             all_sensors.extend(piece.get_sensors())
 
         return all_sensors

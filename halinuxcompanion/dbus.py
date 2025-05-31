@@ -166,7 +166,16 @@ async def register_sensor_dbus_handlers(sensor: Any, dbus_instance: "Dbus") -> N
     """
     # Find all methods with the _dbus_signal_alias attribute
     for attr_name in dir(sensor):
-        attr = getattr(sensor, attr_name)
+        logger.info(
+            f"Checking {sensor.__class__.__name__}.{attr_name} for D-Bus signal handler"
+        )
+        try:
+            attr = getattr(sensor, attr_name)
+        except AttributeError:
+            logger.warning(
+                f"Attribute {attr_name} not found on {sensor.__class__.__name__}"
+            )
+            continue
         if callable(attr) and hasattr(attr, "_dbus_signal_alias"):
             signal_alias = attr._dbus_signal_alias
             # Register the bound method
