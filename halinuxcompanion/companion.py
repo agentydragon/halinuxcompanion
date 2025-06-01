@@ -155,9 +155,8 @@ class Companion:
     state: State
 
     @property
-    def http_port(self) -> int:
-        """Get the port for the local HTTP listener (notifications and OAuth)."""
-        return self.config.http_port
+    def hardware(self) -> HardwareConfig:
+        return self.config.hardware
 
     @property
     def http_host(self) -> str:
@@ -165,8 +164,9 @@ class Companion:
         return self.config.http_host
 
     @property
-    def hardware(self) -> HardwareConfig:
-        return self.config.hardware
+    def http_port(self) -> int:
+        """Get the port for the local HTTP listener (notifications and OAuth)."""
+        return self.config.http_port
 
     @property
     def ha_token(self) -> str | None:
