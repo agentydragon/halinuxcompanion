@@ -9,7 +9,7 @@ from .models import RegistrationData
 from .oauth import AuthenticationError, OAuthTokens, ensure_valid_oauth_token
 
 if TYPE_CHECKING:
-    from .secrets import SecretStorage
+    from .secret_storage import SecretStorage
 
 from .constants import (
     SC_INTEGRATION_DELETED,
@@ -186,8 +186,8 @@ class Server:
 
     def __init__(self, companion: Companion) -> None:
         self.app = web.Application()
-        self.host = companion.computer_ip  # Using legacy field name
-        self.port = companion.computer_port  # Using legacy field name
+        self.host = companion.http_host
+        self.port = companion.http_port
         self.runner = web.AppRunner(self.app)
 
         # Always register the OAuth callback route

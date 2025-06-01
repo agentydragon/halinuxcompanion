@@ -15,8 +15,8 @@ from .dbus import Dbus
 from .hardware_base import DeviceClass
 from .notifier import Notifier
 from .oauth import OAuthFlow
-from .secret_storage.file import FileSecretStorage, check_file_permissions
-from .secrets import LibSecretStorage, SecretStorage, SecretStorageBackend
+from .secret_storage import FileSecretStorage, LibSecretStorage, SecretStorage, SecretStorageBackend
+from .secret_storage.file import check_file_permissions
 from .sensor import HARDWARE_CLASSES, SensorManager
 
 # set logging level using and environment variable
@@ -220,7 +220,7 @@ async def main():
     async with Server(companion) as server:
         # Handle OAuth separately (doesn't need API)
         if args.command == "oauth":
-            await OAuthFlow(companion.ha_url, redirect_port=companion.computer_port).run(storage, server)
+            await OAuthFlow(companion.ha_url, redirect_port=companion.http_port).run(storage, server)
             print("\nOAuth authentication successful.")
             return
 
@@ -253,7 +253,7 @@ async def main():
         bus = await Dbus.create()
 
         # Register sensors
-        sensor_manager = SensorManager(api=api, dbus=bus)
+        sensor_manager = SensorManager(api=api, dbus=bus, hardware_config=companion.hardware)
 
         try:
             await sensor_manager.discover_and_register_sensors()

@@ -18,6 +18,7 @@ from halinuxcompanion.hardware import (
 )
 from halinuxcompanion.hardware.battery_hardware import BatteryHardwareClass
 from halinuxcompanion.hardware_base import HardwareClass, HardwareSensor
+from halinuxcompanion.hardware_config import HardwareConfig
 
 from .constants import SC_REGISTER_SENSOR
 
@@ -46,6 +47,7 @@ class SensorManager:
 
     api: API
     dbus: Dbus
+    hardware_config: HardwareConfig
     update_counter: int = 0
     sensors: list[HardwareSensor] = field(default_factory=list)
     hardware_instances: list[HardwareClass] = field(default_factory=list)
@@ -97,14 +99,9 @@ class SensorManager:
 
     async def discover_and_register_sensors(self) -> None:
         """Discover and register sensors."""
-        # Get sensor configs from companion
-        if not (companion := getattr(self.api, "companion", None)):
-            logger.error("No companion object found in API")
-            return
-
         # Discover sensors for each enabled hardware class
         for hw_name, hw_class in HARDWARE_CLASSES.items():
-            hw_config = getattr(companion.hardware, hw_name)
+            hw_config = getattr(self.hardware_config, hw_name)
             if not hw_config.enabled:
                 continue
             logger.info(f"Discovering {hw_name} sensors...")

@@ -13,7 +13,7 @@ from xdg_base_dirs import xdg_state_home
 from .constants import DEFAULT_NOTIFIER_PORT, SC_INTEGRATION_DELETED, SC_OK
 from .hardware_config import HardwareConfig
 from .models import RegistrationData
-from .secrets import SecretStorageBackend
+from .secret_storage import SecretStorageBackend
 
 if TYPE_CHECKING:
     from halinuxcompanion.api import API
@@ -46,9 +46,9 @@ class CompanionConfig(BaseModel):
     device_name: str | None
     manufacturer: str | None
     model: str | None
-    # Legacy field names kept for backward compatibility
-    computer_port: int = Field(default=DEFAULT_NOTIFIER_PORT, alias="notifier_listen_port")
-    computer_ip: str = Field(alias="notifier_listen_address")
+    # HTTP listener configuration for both OAuth and notifications
+    http_port: int = Field(default=DEFAULT_NOTIFIER_PORT, alias="notifier_listen_port")
+    http_host: str = Field(alias="notifier_listen_address")
     refresh_interval: int = 15
     hardware: HardwareConfig
     services: ServicesConfig
@@ -62,12 +62,8 @@ class CompanionConfig(BaseModel):
 logger = logging.getLogger("halinuxcompanion")
 
 
-class State(BaseModel):
-    """State class to hold the companion state.
-
-    This class is used to store the companion state in a file.
-    It is used to store the push token and other state information.
-    """
+class StateData(BaseModel):
+    """Data model for companion state."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -75,24 +71,68 @@ class State(BaseModel):
     registration_data: RegistrationData | None = None
 
 
-def state_path() -> Path:
-    """Get the state file path."""
-    return get_state_dir() / "state.json"
+class State:
+    """Manages persistent companion state.
 
+    This class handles loading and saving companion state data
+    including push tokens and registration information.
+    """
 
-def load_state() -> State:
-    """Load state data including push token."""
-    if not state_path().exists():
-        return State()
-    with open(state_path()) as f:
-        data = json.load(f)
-        return State.model_validate(data)  # type: ignore[no-any-return]
+    def __init__(self, state_dir: Path | None = None):
+        """Initialize state manager.
 
+        Args:
+            state_dir: Directory to store state file. Defaults to XDG state home.
+        """
+        self._state_dir = state_dir or get_state_dir()
+        self._state_path = self._state_dir / "state.json"
+        self._data = self._load()
 
-def save_state(state):
-    """Save state data including push token."""
-    state_path().parent.mkdir(parents=True, exist_ok=True)
-    state_path().write_text(State.model_dump_json(state, indent=2))
+    @property
+    def path(self) -> Path:
+        """Get the state file path."""
+        return self._state_path
+
+    @property
+    def push_token(self) -> str | None:
+        """Get the push token."""
+        return self._data.push_token
+
+    @push_token.setter
+    def push_token(self, value: str | None) -> None:
+        """Set the push token."""
+        self._data.push_token = value
+        self._save()
+
+    @property
+    def registration_data(self) -> RegistrationData | None:
+        """Get the registration data."""
+        return self._data.registration_data
+
+    @registration_data.setter
+    def registration_data(self, value: RegistrationData | None) -> None:
+        """Set the registration data."""
+        self._data.registration_data = value
+        self._save()
+
+    def _load(self) -> StateData:
+        """Load state data from file."""
+        if not self._state_path.exists():
+            return StateData()
+
+        try:
+            with open(self._state_path) as f:
+                data = json.load(f)
+                return StateData.model_validate(data)  # type: ignore[no-any-return]
+        except (json.JSONDecodeError, ValueError):
+            logger.exception("Error loading state file, starting fresh")
+            return StateData()
+
+    def _save(self) -> None:
+        """Save state data to file."""
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        self._state_path.write_text(self._data.model_dump_json(indent=2))
+        logger.debug(f"State saved to {self._state_path}")
 
 
 class Companion:
@@ -115,14 +155,14 @@ class Companion:
     state: State
 
     @property
-    def computer_port(self) -> int:
-        """Get the port for the companion computer service."""
-        return self.config.computer_port
+    def http_port(self) -> int:
+        """Get the port for the local HTTP listener (notifications and OAuth)."""
+        return self.config.http_port
 
     @property
-    def computer_ip(self) -> str:
-        """Get the IP address of the companion computer service."""
-        return self.config.computer_ip
+    def http_host(self) -> str:
+        """Get the host/IP address for the local HTTP listener."""
+        return self.config.http_host
 
     @property
     def hardware(self) -> HardwareConfig:
@@ -157,7 +197,7 @@ class Companion:
     def __init__(self, config: CompanionConfig):
         # Load only allowed values
         self.config = config
-        self.state = load_state()
+        self.state = State()
 
     @property
     def device_name(self) -> str:
@@ -176,7 +216,7 @@ class Companion:
         if push_token := self.load_or_generate_push_token():
             app_data = {
                 "push_token": push_token,
-                "push_url": f"http://{self.computer_ip}:{self.computer_port}/notify",  # TODO: use new field names after config migration
+                "push_url": f"http://{self.http_host}:{self.http_port}/notify",
             }
         payload = {
             "device_id": self.device_id,
@@ -206,7 +246,7 @@ class Companion:
         logger.info(f"Device registration successful: {registration_data}")
 
         self.state.registration_data = registration_data
-        save_state(self.state)
+        # State is automatically saved when properties are set
 
         return registration_data
 
@@ -217,7 +257,7 @@ class Companion:
 
         logger.info("Generating new push token")
         self.state.push_token = secrets.token_urlsafe(32)
-        save_state(self.state)
+        # State is automatically saved when properties are set
         return self.state.push_token
 
     async def load_or_register(self, api: "API") -> RegistrationData:

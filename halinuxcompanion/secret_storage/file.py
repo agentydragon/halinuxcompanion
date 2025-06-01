@@ -7,7 +7,7 @@ import stat
 from pathlib import Path
 
 from ..oauth import OAuthTokens
-from ..secrets import SecretStorage
+from .base import SecretStorage
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .constants import OAUTH_CALLBACK_PORT, SC_OK
 
 if TYPE_CHECKING:
-    from .secrets import SecretStorage
+    from .secret_storage import SecretStorage
 
 
 logger = logging.getLogger(__name__)
