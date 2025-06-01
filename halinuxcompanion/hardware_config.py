@@ -1,7 +1,7 @@
 """Hierarchical hardware configuration models."""
 
 import re
-from typing import Annotated, List, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -25,7 +25,7 @@ class BatteryConfig(HardwareClassConfig):
 class NetworkConfig(HardwareClassConfig):
     """Configuration for network hardware class."""
 
-    interfaces: List[str] = Field(
+    interfaces: list[str] = Field(
         default_factory=list,
         description="List of network interfaces to monitor (e.g., ['eth0', 'wlan0'])",
     )
@@ -73,7 +73,7 @@ Mac = Annotated[
 class BluetoothConfig(HardwareClassConfig):
     """Configuration for bluetooth hardware class."""
 
-    devices: List[Mac] = Field(
+    devices: list[Mac] = Field(
         default_factory=list,
         description="List of Bluetooth MAC addresses to monitor",
     )

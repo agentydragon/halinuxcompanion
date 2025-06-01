@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import List
 
 import psutil
 
 from ..hardware_base import (
+    DeviceClass,
     HardwareClass,
     HardwareSensor,
     PerPieceUpdateMixin,
@@ -31,12 +31,12 @@ class UptimeHardwareClass(PerPieceUpdateMixin, HardwareClass):
             unique_id="uptime",
             name="Uptime",
             unit_of_measurement="s",
-            device_class="duration",
+            device_class=DeviceClass.DURATION,
             state_class=StateClass.TOTAL_INCREASING,
             icon="mdi:clock-outline",
         )
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         return [self.sensor]
 
     async def update_all_sensors(self) -> None:

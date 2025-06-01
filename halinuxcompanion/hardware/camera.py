@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from glob import glob
 from subprocess import run
-from typing import List
 
 from ..hardware_base import (
     HardwareClass,
@@ -21,9 +20,7 @@ logger = logging.getLogger(__name__)
 class CameraPiece(HardwarePiece):
     """Represents a camera device."""
 
-    def __init__(
-        self, hardware_id: str, device_path: str, state_sensor: HardwareSensor
-    ):
+    def __init__(self, hardware_id: str, device_path: str, state_sensor: HardwareSensor):
         super().__init__(hardware_id)
         self.device_path = device_path  # TODO: dataclass?
         self.state_sensor = state_sensor
@@ -36,12 +33,10 @@ class CameraPiece(HardwarePiece):
             output = result.stdout.decode("utf-8").strip()
             self.state_sensor.state = "active" if output else "idle"
         except Exception:
-            logger.debug(
-                f"Failed to check camera state for {self.device_path}", exc_info=True
-            )
+            logger.debug(f"Failed to check camera state for {self.device_path}", exc_info=True)
             self.state_sensor.state = "unavailable"
 
-    def get_sensors(self) -> List[HardwareSensor]:
+    def get_sensors(self) -> list[HardwareSensor]:
         """Get list of sensors."""
         return [self.state_sensor]
 
@@ -56,7 +51,7 @@ class CameraHardwareClass(PerPieceUpdateMixin, HardwareClass):
         self.config: CameraConfig = config
         self._hardware_pieces: list[CameraPiece] = []  # type: ignore[assignment]
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Discover available sensors."""
         devices = glob("/dev/video*")
         self._hardware_pieces.clear()

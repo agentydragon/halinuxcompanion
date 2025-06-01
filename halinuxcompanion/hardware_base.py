@@ -4,12 +4,17 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Type, TypeVar
+from typing import Any, TypeVar
 
+import pint
 from pydantic import BaseModel, Field
 
 from .hardware_config import HardwareClassConfig
-from .units import ureg
+
+# Initialize the unit registry
+ureg = pint.UnitRegistry()
+# Home Assistant unit definitions
+ureg.define("percent = 0.01 * dimensionless = %")
 
 logger = logging.getLogger(__name__)
 
@@ -44,25 +49,10 @@ class SensorType(str, Enum):
     BINARY_SENSOR = "binary_sensor"
 
 
-"""
-- apparent_power
-- conductivity
-- data_rate
-- date
-- distance
-- energy
-- energy_distance
-- enum
-- power_factor
-- pressure
-- reactive_power
-- signal_strength
-- sound_pressure
-- speed
-- timestamp
-- unit_price
-- volume
-"""
+# TODO: Additional device classes to consider implementing:
+# - apparent_power, conductivity, data_rate, date, distance, energy, energy_distance
+# - enum, power_factor, pressure, reactive_power, signal_strength, sound_pressure
+# - speed, timestamp, unit_price, volume
 
 
 class DeviceClass(str, Enum):
@@ -86,25 +76,24 @@ class DeviceClass(str, Enum):
     CONNECTIVITY = "connectivity"
 
 
-"""
-- battery - Low battery (on = low)
-- battery_charging - Charging status
-- co / carbon_monoxide - Carbon monoxide detection
-- cold - Cold detection
-- door - Door open/closed
-- light - Light detection
-- lock - Lock open/closed
-- moving - Moving/stopped
-- opening - Generic opening
-- plug - Plugged in status
-- power - Power detection
-- presence - Home/away
-- running - Running status
-- tamper - Tamper detection
-- update - Update available (deprecated)
-- vibration - Vibration detection
-- window - Window open/closed
-"""
+# TODO: Additional binary sensor device classes to consider implementing:
+# - battery - Low battery (on = low)
+# - battery_charging - Charging status
+# - co / carbon_monoxide - Carbon monoxide detection
+# - cold - Cold detection
+# - door - Door open/closed
+# - light - Light detection
+# - lock - Lock open/closed
+# - moving - Moving/stopped
+# - opening - Generic opening
+# - plug - Plugged in status
+# - power - Power detection
+# - presence - Home/away
+# - running - Running status
+# - tamper - Tamper detection
+# - update - Update available (deprecated)
+# - vibration - Vibration detection
+# - window - Window open/closed
 
 
 class HardwareSensor(BaseModel):
@@ -143,13 +132,12 @@ class HardwareProvider(ABC):
     """Base class for hardware providers that discover and manage hardware pieces."""
 
     @abstractmethod
-    async def discover_hardware(self) -> List[Any]:
+    async def discover_hardware(self) -> list[Any]:
         """Discover available hardware pieces.
 
         Returns:
             List of hardware piece instances (implementation-defined)
         """
-        pass
 
 
 class HardwareClass(ABC):
@@ -167,13 +155,12 @@ class HardwareClass(ABC):
         self._hardware_pieces: list[HardwarePiece] = []
 
     @abstractmethod
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Discover all sensors for this hardware class.
 
         Returns:
             List of sensor instances
         """
-        pass
 
     @abstractmethod
     async def update_all_sensors(self) -> None:
@@ -182,7 +169,6 @@ class HardwareClass(ABC):
         This method must be implemented by each hardware class.
         It should populate sensor data for all hardware pieces.
         """
-        pass
 
 
 class PerPieceUpdateMixin:
@@ -195,7 +181,7 @@ class PerPieceUpdateMixin:
         _hardware_pieces: List[Any] - List of hardware pieces with update() method
     """
 
-    _hardware_pieces: List[Any]  # Must be defined by subclass
+    _hardware_pieces: list[Any]  # Must be defined by subclass
 
     async def update_all_sensors(self) -> None:
         """Update all sensors by updating each hardware piece individually."""
@@ -208,4 +194,4 @@ class PerPieceUpdateMixin:
 
 
 # Registry for hardware classes
-HARDWARE_CLASSES: Dict[str, Type[HardwareClass]] = {}
+HARDWARE_CLASSES: dict[str, type[HardwareClass]] = {}

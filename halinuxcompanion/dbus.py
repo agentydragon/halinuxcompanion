@@ -1,7 +1,7 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from dbus_next import BusType
 from dbus_next.aio import MessageBus, ProxyInterface
@@ -15,10 +15,10 @@ SCREENSAVER_INTERFACE = "org.freedesktop.ScreenSaver"
 SCREENSAVER_GNOME_INTERFACE = "org.gnome.ScreenSaver"
 
 # Keep track of subscribed signals
-subscribed_signals: List[Tuple[str, Callable]] = []
+subscribed_signals: list[tuple[str, Callable]] = []
 
 # Global registry for signal handlers registered via decorator
-dbus_signal_handlers: Dict[str, Callable[..., Any]] = {}
+dbus_signal_handlers: dict[str, Callable[..., Any]] = {}
 
 
 @dataclass
@@ -82,18 +82,22 @@ INTERFACES = {
 class Dbus:
     session: MessageBus
     system: MessageBus
-    interfaces: Dict[str, ProxyInterface]
+    interfaces: dict[str, ProxyInterface]
 
-    async def init(self) -> None:
-        self.system = await MessageBus(bus_type=BusType.SYSTEM).connect()
-        self.session = await MessageBus(bus_type=BusType.SESSION).connect()
+    def __init__(self, session: MessageBus, system: MessageBus):
+        self.session = session
+        self.system = system
         self.interfaces = {}
 
-    async def _get_interface(self, i: DbusInterface) -> Optional[ProxyInterface]:
-        if i.type == "system":
-            bus = self.system
-        else:
-            bus = self.session
+    @classmethod
+    async def create(cls) -> "Dbus":
+        """Create and initialize a new Dbus instance."""
+        system = await MessageBus(bus_type=BusType.SYSTEM).connect()
+        session = await MessageBus(bus_type=BusType.SESSION).connect()
+        return cls(session=session, system=system)
+
+    async def _get_interface(self, i: DbusInterface) -> ProxyInterface | None:
+        bus = self.system if i.type == "system" else self.session
         try:
             introspection = await bus.introspect(i.service, i.path)
             proxy = bus.get_proxy_object(i.service, i.path, introspection)
@@ -103,35 +107,35 @@ class Dbus:
             logger.warning(f"Failed to get D-Bus interface {i.interface} at {i.path}")
             return None
 
-    @lru_cache
-    async def get_interface(self, name: str) -> Optional[ProxyInterface]:
+    async def get_interface(self, name: str) -> ProxyInterface | None:
         iface = self.interfaces.get(name)
         if iface is not None:
             return iface
-        self.interfaces[name] = await self._get_interface(INTERFACES[name])
+        interface = await self._get_interface(INTERFACES[name])
+        if interface is not None:
+            self.interfaces[name] = interface
         return self.interfaces[name]
 
     async def register_signal(self, signal_alias: str, callback: Callable) -> None:
         """Register a signal handler"""
         # TODO: optimize
+        iface_name: str | None = None
+        signal_name: str | None = None
         for interface in INTERFACES.values():
             if signal_alias in interface.signals.values():
                 iface_name = interface.interface
                 signal_name = interface.signals[signal_alias]
                 break
-        else:
+
+        if iface_name is None or signal_name is None:
             logger.warning(f"Unknown signal alias: {signal_alias}")
             return
 
         if not (iface := await self.get_interface(iface_name)):
-            logger.warning(
-                f"Could not register signal callback for interface:{iface_name}, signal:{signal_name}"
-            )
+            logger.warning(f"Could not register signal callback for interface:{iface_name}, signal:{signal_name}")
             return
         getattr(iface, signal_name)(callback)
-        logger.info(
-            f"Registered signal callback for interface:{iface_name}, signal:{signal_name}"
-        )
+        logger.info(f"Registered signal callback for interface:{iface_name}, signal:{signal_name}")
         subscribed_signals.append((signal_alias, callback))
 
 
@@ -151,7 +155,7 @@ def dbus_signal_handler(signal_alias: str):
     def decorator(func: Callable) -> Callable:
         # Mark the function with metadata instead of registering immediately
         # This allows us to register bound methods later
-        setattr(func, "_dbus_signal_alias", signal_alias)
+        func._dbus_signal_alias = signal_alias  # type: ignore[attr-defined]
         return func
 
     return decorator
@@ -166,21 +170,16 @@ async def register_sensor_dbus_handlers(sensor: Any, dbus_instance: "Dbus") -> N
     """
     # Find all methods with the _dbus_signal_alias attribute
     for attr_name in dir(sensor):
-        logger.info(
-            f"Checking {sensor.__class__.__name__}.{attr_name} for D-Bus signal handler"
-        )
+        logger.info(f"Checking {sensor.__class__.__name__}.{attr_name} for D-Bus signal handler")
         try:
             attr = getattr(sensor, attr_name)
         except AttributeError:
-            logger.warning(
-                f"Attribute {attr_name} not found on {sensor.__class__.__name__}"
-            )
+            logger.warning(f"Attribute {attr_name} not found on {sensor.__class__.__name__}")
             continue
         if callable(attr) and hasattr(attr, "_dbus_signal_alias"):
             signal_alias = attr._dbus_signal_alias
             # Register the bound method
             await dbus_instance.register_signal(signal_alias, attr)
             logger.debug(
-                f"Registered D-Bus handler on {sensor.__class__.__name__}.{attr_name} "
-                f"for signal {signal_alias}"
+                f"Registered D-Bus handler on {sensor.__class__.__name__}.{attr_name} for signal {signal_alias}"
             )

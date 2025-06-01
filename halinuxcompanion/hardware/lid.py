@@ -5,7 +5,6 @@ from __future__ import annotations
 import glob
 import logging
 from pathlib import Path
-from typing import List
 
 from ..hardware_base import (
     DeviceClass,
@@ -35,8 +34,8 @@ class LidPiece(HardwarePiece):
 
         try:
             content = self.lid_path.read_text().strip().lower()
-        except (OSError, IOError):
-            logger.error(f"Failed to read lid state from {self.lid_path}")
+        except OSError:
+            logger.exception(f"Failed to read lid state from {self.lid_path}")
             self.is_closed_sensor.state = None
             return
 
@@ -49,7 +48,7 @@ class LidPiece(HardwarePiece):
             logger.warning(f"Unknown lid state format: {content}")
             self.is_closed_sensor.state = None
 
-    def get_sensors(self) -> List[HardwareSensor]:
+    def get_sensors(self) -> list[HardwareSensor]:
         """Get list of sensors."""
         return list(filter(None, [self.is_closed_sensor]))
 
@@ -63,7 +62,7 @@ class LidHardwareClass(PerPieceUpdateMixin, HardwareClass):
         super().__init__(config)
         self.config: LidConfig = config
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Discover available sensors."""
         self._hardware_pieces.clear()
         for path_str in glob.glob("/proc/acpi/button/lid/LID*/state"):
@@ -72,10 +71,8 @@ class LidHardwareClass(PerPieceUpdateMixin, HardwareClass):
                 continue
             try:
                 path.read_text()
-            except (OSError, IOError):
-                logger.error(
-                    f"Found unreadable lid state file at {path} - check permissions"
-                )
+            except OSError:
+                logger.error(f"Found unreadable lid state file at {path} - check permissions")  # noqa: TRY400
                 continue
 
             logger.info(f"Found lid state at: {path}")

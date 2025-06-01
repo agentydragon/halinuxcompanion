@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, TypeVar, overload
+from typing import TypeVar, overload
 
 from dbus_next import BusType, Variant
 from dbus_next.aio import MessageBus
@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 class BluetoothData:
     """Bluetooth device data."""
 
-    name: Optional[str]
+    name: str | None
     visible: bool
     connected: bool
-    battery_percentage: Optional[int] = None  # percentage (0-100)
+    battery_percentage: int | None = None  # percentage (0-100)
     # TODO: implement volume, playback state
 
 
@@ -48,7 +48,7 @@ def expect_variant(v: Variant, py_type: type[T] | tuple[type[T], ...]) -> T:
     value = v.value
     if not isinstance(value, py_type):
         raise TypeError(f"Variant holds {type(value)} ≠ {py_type}")
-    return value
+    return value  # type: ignore[no-any-return]
 
 
 class BluetoothPiece(HardwarePiece):
@@ -58,9 +58,9 @@ class BluetoothPiece(HardwarePiece):
         super().__init__(mac)
         self.mac = mac
 
-        def _sensor(id, **kwargs):
+        def _sensor(sensor_id, **kwargs):
             # name will be set later
-            return HardwareSensor(unique_id=f"bluetooth:{mac}:{id}", **kwargs)
+            return HardwareSensor(unique_id=f"bluetooth:{mac}:{sensor_id}", **kwargs)
 
         self.battery_sensor = _sensor(
             "battery_level",
@@ -86,9 +86,7 @@ class BluetoothPiece(HardwarePiece):
     def _apply_update(self, data: BluetoothData) -> None:
         if data.name and data.name != self.name:
             # Only update if name set and changed
-            logger.info(
-                f"Updating name for {self.mac} from {self.name} to '{data.name}'"
-            )
+            logger.info(f"Updating name for {self.mac} from {self.name} to '{data.name}'")
             self.name = data.name
 
         if not data.name and self.name:
@@ -108,7 +106,7 @@ class BluetoothPiece(HardwarePiece):
         data = await self._fetch_sensor_data()
         self._apply_update(data)
 
-    def get_sensors(self) -> List[HardwareSensor]:
+    def get_sensors(self) -> list[HardwareSensor]:
         return [self.battery_sensor, self.connected_sensor, self.visible_sensor]
 
     async def _fetch_sensor_data(self) -> BluetoothData:
@@ -118,9 +116,7 @@ class BluetoothPiece(HardwarePiece):
         # TODO: dedupe, use dbus.py
         node = await bus.introspect("org.bluez", "/")
         proxy = bus.get_proxy_object("org.bluez", "/", node)
-        objs = await proxy.get_interface(
-            "org.freedesktop.DBus.ObjectManager"
-        ).call_get_managed_objects()
+        objs = await proxy.get_interface("org.freedesktop.DBus.ObjectManager").call_get_managed_objects()
         # Bluez keys:
         #   /org/bluez
         #   /org/bluez/hci0
@@ -139,18 +135,14 @@ class BluetoothPiece(HardwarePiece):
 
         if pct_variant := ifaces.get("org.bluez.Battery1", {}).get("Percentage"):
             pct = expect_variant(pct_variant, (int, type(None)))
-            logger.info(
-                f"Battery level for {self.mac} is {pct}% (from org.bluez.Battery1)"
-            )
+            logger.info(f"Battery level for {self.mac} is {pct}% (from org.bluez.Battery1)")
         else:
             pct = None
 
         return BluetoothData(
             visible=True,
             connected=expect_variant(dev["Connected"], bool),
-            name=expect_variant(
-                (dev.get("Name") or dev.get("Alias")), (str, type(None))
-            ),
+            name=expect_variant((dev.get("Name") or dev.get("Alias")), (str, type(None))),
             battery_percentage=pct,
         )
 
@@ -165,7 +157,7 @@ class BluetoothHardwareClass(PerPieceUpdateMixin, HardwareClass):
         self.config = config
         self._hardware_pieces = [BluetoothPiece(mac) for mac in self.config.devices]
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Create sensors for all configured Bluetooth devices."""
         if not self.config.enabled:
             return []

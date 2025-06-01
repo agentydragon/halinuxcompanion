@@ -7,16 +7,16 @@ from pathlib import Path
 
 import toml
 from tabulate import tabulate
-from xdg_base_dirs import xdg_config_home, xdg_state_home
+from xdg_base_dirs import xdg_config_home
 
 from .api import API, Server
-from .companion import Companion, CompanionConfig
+from .companion import Companion, CompanionConfig, get_state_dir
 from .dbus import Dbus
 from .hardware_base import DeviceClass
 from .notifier import Notifier
 from .oauth import OAuthFlow
 from .secret_storage.file import FileSecretStorage, check_file_permissions
-from .secrets import LibSecretStorage, SecretStorageBackend
+from .secrets import LibSecretStorage, SecretStorage, SecretStorageBackend
 from .sensor import HARDWARE_CLASSES, SensorManager
 
 # set logging level using and environment variable
@@ -30,9 +30,10 @@ def load_config(file: Path) -> CompanionConfig:
     if not file.exists():
         sys.exit(f"Config file {file} not found, exiting")
 
-    with open(file) as f:
+    with file.open() as f:
         try:
-            config = CompanionConfig.model_validate(toml.load(f))
+            data = toml.load(f)
+            config = CompanionConfig.model_validate(data)
         except toml.TomlDecodeError:
             sys.exit(f"Config file parse error in {file}")
 
@@ -40,12 +41,12 @@ def load_config(file: Path) -> CompanionConfig:
     if config.ha_token:
         check_file_permissions(file)
 
-    return config
+    return config  # type: ignore[no-any-return]
 
 
 def get_default_config_path() -> Path:
     """Get the default config path using XDG_CONFIG_HOME."""
-    return xdg_config_home() / "halinuxcompanion" / "config.toml"
+    return xdg_config_home() / "halinuxcompanion" / "config.toml"  # type: ignore[no-any-return]
 
 
 SENSOR_ICONS = {
@@ -61,18 +62,6 @@ SENSOR_ICONS = {
 }
 
 
-def sensor_line(sensor):
-    # Format sensor type indicator
-    # Print sensor info with proper indentation based on whether we have multiple pieces
-    text = f"{SENSOR_ICONS.get(sensor.device_class, '📊')} {sensor.name} {sensor.state_str}\n"
-    # Print attributes if present
-    if sensor.attributes:
-        text += (
-            " ".join(f"{key}={value}" for key, value in sensor.attributes.items())
-        ) + "\n"
-    return text
-
-
 async def print_sensor_states(companion: Companion) -> None:
     """Print current states of all enabled sensors."""
     print("\n=== Sensor States ===\n")
@@ -82,7 +71,7 @@ async def print_sensor_states(companion: Companion) -> None:
         hw_config = getattr(companion.hardware, hw_class.config_field)
         if not hw_config.enabled:
             continue
-        hardware.append(hw_class(hw_config))  # type: ignore[abstract]
+        hardware.append(hw_class(hw_config))
 
     # Discover sensors for each enabled hardware class
     async def _discover(hw_instance):
@@ -110,8 +99,6 @@ async def print_sensor_states(companion: Companion) -> None:
             )
 
         print(textwrap.indent(tabulate(items, headers="keys"), "  "))
-        # for sensor in sorted(sensors, key=lambda s: s.unique_id):
-        #    print(textwrap.indent(sensor_line(sensor), "  "), end="")
 
 
 async def cleanup_sensors(companion: Companion) -> None:
@@ -123,7 +110,7 @@ async def cleanup_sensors(companion: Companion) -> None:
         hw_config = getattr(companion.hardware, hw_name, None)
         if not hw_config or not hw_config.enabled:
             continue
-        discovered = await hw_class(hw_config).discover_sensors()  # type: ignore[abstract]
+        discovered = await hw_class(hw_config).discover_sensors()
         current_sensor_ids.update(sensor.unique_id for sensor in discovered)
 
     print("\n=== Sensor Cleanup Tool ===\n")
@@ -188,9 +175,7 @@ def commandline() -> argparse.Namespace:
     _oauth_parser = subparsers.add_parser("oauth", help="Run OAuth authentication flow")
 
     # Sensor states command
-    _sensor_states_parser = subparsers.add_parser(
-        "sensor-states", help="Print current sensor states"
-    )
+    _sensor_states_parser = subparsers.add_parser("sensor-states", help="Print current sensor states")
 
     # Cleanup sensors command
     _cleanup_parser = subparsers.add_parser(
@@ -212,16 +197,15 @@ async def main():
           Assistant, events are relayed to it as expected (closed and action).
     """
     args = commandline()
-    logging.basicConfig(level="INFO")
-
     config = load_config(args.config)
 
-    # Command line loglevel takes precedence
-    if level := (args.loglevel or config.loglevel):
-        logger.setLevel(level)
+    # Set logging level: command line > config > default INFO
+    log_level = args.loglevel or config.loglevel or "INFO"
+    logging.basicConfig(level=log_level)
 
     # Get the storage backend
-    state_dir = xdg_state_home() / "halinuxcompanion"  # TODO: dedupe dirs
+    state_dir = get_state_dir()
+    storage: SecretStorage
     if config.storage_backend == SecretStorageBackend.FILE:
         storage = FileSecretStorage(state_dir)
     elif config.storage_backend == SecretStorageBackend.LIBSECRET:
@@ -232,28 +216,28 @@ async def main():
     # Companion objet where configuration is stored
     companion = Companion(config)
 
-    # Handle subcommands
-    if args.command == "oauth":
-        await OAuthFlow(companion.ha_url).run(storage)
-        print("\nOAuth authentication successful.")
-        sys.exit(0)
+    # Use unified server for all operations
+    async with Server(companion) as server:
+        # Handle OAuth separately (doesn't need API)
+        if args.command == "oauth":
+            await OAuthFlow(companion.ha_url, redirect_port=companion.computer_port).run(storage, server)
+            print("\nOAuth authentication successful.")
+            return
 
-    # For commands that need API, create it first
-    if args.command in ["sensor-states", "cleanup-sensors", "run", None]:
-        api = API(companion, storage)  # API client to send data to Home Assistant
+        # All other commands need API setup
+        api = API(companion, storage)
         await companion.load_or_register(api)
         api.registration = companion.state.registration_data
 
-    if args.command == "sensor-states":
-        await print_sensor_states(companion)
-        sys.exit(0)
+        if args.command == "sensor-states":
+            await print_sensor_states(companion)
+            return
 
-    if args.command == "cleanup-sensors":
-        await cleanup_sensors(companion)
-        sys.exit(0)
+        if args.command == "cleanup-sensors":
+            await cleanup_sensors(companion)
+            return
 
-    # Default behavior: run the service (when no command or "run" command)
-    if args.command is None:
+        # Default behavior: run the service
         # Check if we have any authentication configured
         if not api.has_valid_auth():
             logger.critical(
@@ -264,26 +248,22 @@ async def main():
                 "2. Run OAuth authentication: halinuxcompanion oauth\n"
             )
             sys.exit(1)
+
         # Initialize dbus connections
-        bus = Dbus()
-        await bus.init()
+        bus = await Dbus.create()
+
         # Register sensors
         sensor_manager = SensorManager(api=api, dbus=bus)
 
         try:
             await sensor_manager.discover_and_register_sensors()
-        except:
-            logger.critical("Sensor registration failed")
+        except Exception:
+            logger.critical("Sensor registration failed", exc_info=True)
             raise
 
         # Initialize the notifier which implies the webserver and the dbus interface
         if companion.notifier:
-            # TODO: Session bus is initialized already.
-            # DBus session client to send desktop notifications and listen to signals
-            # Notifier behavior: HA -> Webserver -> dbus ... dbus -> event_handler -> HA
-            server = Server(companion)  # HTTP server that handles notifications
             await Notifier().init(bus, api, server, companion)
-            await server.start()
 
         # Loop forever updating sensors.
         while True:

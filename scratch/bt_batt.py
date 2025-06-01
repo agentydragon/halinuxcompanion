@@ -66,9 +66,7 @@ async def read_battery(bus, path, ifaces):
     # Prefer the dedicated interface if present
     if "org.bluez.Battery1" in ifaces:
         node = await bus.introspect("org.bluez", path)
-        batt = bus.get_proxy_object("org.bluez", path, node).get_interface(
-            "org.bluez.Battery1"
-        )
+        batt = bus.get_proxy_object("org.bluez", path, node).get_interface("org.bluez.Battery1")
         return await batt.get_percentage()
     # Fallback to property on Device1
     return ifaces["org.bluez.Device1"].get("BatteryPercentage")

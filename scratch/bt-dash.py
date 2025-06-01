@@ -4,7 +4,7 @@
 #        rich (optional, prettier table)  pip install rich
 
 
-from typing import Any, Dict
+from typing import Any
 
 from gi.repository import GLib
 from pydbus import SystemBus
@@ -23,7 +23,7 @@ objs = om.GetManagedObjects()  # global cache we keep in sync
 adapter_path = next(p for p, i in objs.items() if "org.bluez.Adapter1" in i)
 adapter = bus.get("org.bluez", adapter_path)
 
-devices: Dict[str, Dict[str, Any]] = {}  # addr  -> info-dict
+devices: dict[str, dict[str, Any]] = {}  # addr  -> info-dict
 
 
 # ───────────────── helper funcs ──────────────────
@@ -65,9 +65,7 @@ def transport_props(dev_path):
 
 
 def codec_name(code):
-    return {0x00: "SBC", 0x01: "SBC", 0x02: "AAC", 0x03: "aptX", 0xFF: "Vendor"}.get(
-        code, ""
-    )
+    return {0x00: "SBC", 0x01: "SBC", 0x02: "AAC", 0x03: "aptX", 0xFF: "Vendor"}.get(code, "")
 
 
 def update_entry(path, changed=None):

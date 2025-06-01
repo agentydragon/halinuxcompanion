@@ -1,7 +1,7 @@
 """Battery data provider using UPower via D-Bus."""
 
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from dbus_fast import BusType, DBusError, Variant
 from dbus_fast.aio import MessageBus
@@ -30,7 +30,7 @@ class UPowerBatteryProvider(BatteryDataProvider):
     """Battery data provider using UPower via D-Bus."""
 
     def __init__(self) -> None:
-        self._dbus = None
+        self._dbus: MessageBus | None = None
         self._proxies: dict[str, Any] = {}  # Cache all proxies
 
     async def _ensure_dbus(self):
@@ -48,29 +48,23 @@ class UPowerBatteryProvider(BatteryDataProvider):
             self._proxies[path] = dbus.get_proxy_object(UPOWER_BUS, path, introspection)
         return self._proxies[path]
 
-    async def discover_batteries(self) -> List[str]:
+    async def discover_batteries(self) -> list[str]:
         """Discover available batteries via UPower."""
         try:
-            upower = (await self._get_proxy(UPOWER_OBJECT_PATH)).get_interface(
-                UPOWER_INTERFACE
-            )
+            upower = (await self._get_proxy(UPOWER_OBJECT_PATH)).get_interface(UPOWER_INTERFACE)
             devices = await upower.call_enumerate_devices()
         except DBusError:
-            logger.error("DBus error discovering batteries via UPower", exc_info=True)
+            logger.exception("DBus error discovering batteries via UPower")
             return []
         return [path for path in devices if "battery_" in path or "BAT" in path]
 
-    async def get_battery_data(self, battery_id: str) -> Optional[BatteryData]:
+    async def get_battery_data(self, battery_id: str) -> BatteryData | None:
         """Get battery data from UPower."""
         try:
-            properties = (await self._get_proxy(battery_id)).get_interface(
-                DBUS_PROPERTIES_INTERFACE
-            )
+            properties = (await self._get_proxy(battery_id)).get_interface(DBUS_PROPERTIES_INTERFACE)
             all_props = await properties.call_get_all(UPOWER_DEVICE_INTERFACE)
         except DBusError:
-            logger.error(
-                f"DBus error getting battery data for {battery_id}", exc_info=True
-            )
+            logger.exception(f"DBus error getting battery data for {battery_id}")
             return None
 
         # Helper to extract value from Variant
@@ -104,9 +98,7 @@ class UPowerBatteryProvider(BatteryDataProvider):
             energy_full=get_value("EnergyFull"),
             energy_full_design=get_value("EnergyFullDesign"),
             capacity=get_value("Capacity"),
-            charge_cycles=get_value("ChargeCycles")
-            if get_value("ChargeCycles", 0) > 0
-            else None,
+            charge_cycles=get_value("ChargeCycles") if get_value("ChargeCycles", 0) > 0 else None,
             voltage=get_value("Voltage"),
             temperature=(temp_kelvin - 273.15 if temp_kelvin else None),
             # NOTE: not reporting: Technology, Model, Vendor, Serial, WarningLevel

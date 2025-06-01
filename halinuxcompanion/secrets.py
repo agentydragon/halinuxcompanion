@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import cached_property
-from typing import Dict, Optional
 
 from .oauth import OAuthTokens
 
@@ -33,34 +32,28 @@ class SecretStorage(ABC):
     """Abstract base class for secret storage backends."""
 
     @abstractmethod
-    def load_oauth_tokens(self) -> Optional[OAuthTokens]:
+    def load_oauth_tokens(self) -> OAuthTokens | None:
         """Load OAuth tokens from storage."""
-        pass
 
     @abstractmethod
     def save_oauth_tokens(self, tokens: OAuthTokens) -> None:
         """Save OAuth tokens to storage."""
-        pass
 
     @abstractmethod
     def delete_oauth_tokens(self) -> None:
         """Delete OAuth tokens from storage."""
-        pass
 
     @abstractmethod
-    def load_long_lived_token(self) -> Optional[str]:
+    def load_long_lived_token(self) -> str | None:
         """Load long-lived access token from storage."""
-        pass
 
     @abstractmethod
     def save_long_lived_token(self, token: str) -> None:
         """Save long-lived access token to storage."""
-        pass
 
     @abstractmethod
     def delete_long_lived_token(self) -> None:
         """Delete long-lived access token from storage."""
-        pass
 
 
 class LibSecretStorage(SecretStorage):
@@ -70,9 +63,7 @@ class LibSecretStorage(SecretStorage):
 
     def __init__(self):
         if Secret is None:
-            raise ImportError(
-                "libsecret is not available. Install python3-gi and libsecret."
-            )
+            raise ImportError("libsecret is not available. Install python3-gi and libsecret.")
 
     @cached_property
     def schema(self):
@@ -87,7 +78,7 @@ class LibSecretStorage(SecretStorage):
             },
         )
 
-    def _get_attributes(self, secret_type: str) -> Dict[str, str]:
+    def _get_attributes(self, secret_type: str) -> dict[str, str]:
         """Get attributes for secret lookup."""
         return {
             "application": self.APP_ID,
@@ -106,13 +97,14 @@ class LibSecretStorage(SecretStorage):
             None,
         )
 
-    def _lookup_password(self, secret_type: str) -> Optional[str]:
+    def _lookup_password(self, secret_type: str) -> str | None:
         """Look up a password from the keyring."""
-        return Secret.password_lookup_sync(
+        result = Secret.password_lookup_sync(
             self.schema,
             self._get_attributes(secret_type),
             None,
         )
+        return result  # type: ignore[no-any-return]
 
     def _clear_password(self, secret_type: str) -> None:
         """Clear a password from the keyring."""
@@ -122,15 +114,15 @@ class LibSecretStorage(SecretStorage):
             None,
         )
 
-    def load_oauth_tokens(self) -> Optional[OAuthTokens]:
+    def load_oauth_tokens(self) -> OAuthTokens | None:
         """Load OAuth tokens from keyring."""
         try:
             secret = self._lookup_password("oauth")
             if not secret:
                 return None
-            return OAuthTokens.model_validate(json.loads(secret))
+            return OAuthTokens.model_validate(json.loads(secret))  # type: ignore[no-any-return]
         except (json.JSONDecodeError, ValueError):
-            logger.error("Error loading OAuth tokens from libsecret")
+            logger.exception("Error loading OAuth tokens from libsecret")
             return None
 
     def save_oauth_tokens(self, tokens: OAuthTokens) -> None:
@@ -146,7 +138,7 @@ class LibSecretStorage(SecretStorage):
         """Delete OAuth tokens from keyring."""
         self._clear_password("oauth")
 
-    def load_long_lived_token(self) -> Optional[str]:
+    def load_long_lived_token(self) -> str | None:
         """Load long-lived token from keyring."""
         return self._lookup_password("long_lived_token")
 

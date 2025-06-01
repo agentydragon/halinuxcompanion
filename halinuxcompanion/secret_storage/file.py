@@ -5,7 +5,6 @@ import logging
 import os
 import stat
 from pathlib import Path
-from typing import Optional
 
 from ..oauth import OAuthTokens
 from ..secrets import SecretStorage
@@ -41,22 +40,16 @@ def check_file_permissions(path: Path) -> None:
         )
 
     if file_stat.st_uid != os.getuid():
-        raise PermissionError(
-            f"{path} is owned by uid {file_stat.st_uid}, not current user ({os.getuid()})."
-        )
+        raise PermissionError(f"{path} is owned by uid {file_stat.st_uid}, not current user ({os.getuid()}).")
 
     parent = path.parent
     parent_stat = parent.stat()
 
     if parent_stat.st_mode & stat.S_IWOTH:
-        raise PermissionError(
-            f"{parent} is world-writable. Fix with: chmod o-w {parent}"
-        )
+        raise PermissionError(f"{parent} is world-writable. Fix with: chmod o-w {parent}")
 
     if parent_stat.st_uid not in (os.getuid(), 0):
-        raise PermissionError(
-            f"{parent} owned by uid {parent_stat.st_uid}, not current user or root."
-        )
+        raise PermissionError(f"{parent} owned by uid {parent_stat.st_uid}, not current user or root.")
 
 
 class FileSecretStorage(SecretStorage):
@@ -84,9 +77,7 @@ class FileSecretStorage(SecretStorage):
         # Check parent directory security
         parent = path.parent
         if parent.stat().st_mode & stat.S_IWOTH:
-            raise PermissionError(
-                f"Parent directory {parent} is world-writable. Fix with: chmod o-w {parent}"
-            )
+            raise PermissionError(f"Parent directory {parent} is world-writable. Fix with: chmod o-w {parent}")
 
     def _write_secure_file(self, file_path: Path, content: str) -> None:
         """Write content to file with security checks."""
@@ -97,9 +88,7 @@ class FileSecretStorage(SecretStorage):
 
         # Write with temporary file to ensure atomicity
         # Use a unique temp file to avoid conflicts in concurrent access
-        fd, temp_path_str = tempfile.mkstemp(
-            dir=file_path.parent, prefix=file_path.stem
-        )
+        fd, temp_path_str = tempfile.mkstemp(dir=file_path.parent, prefix=file_path.stem)
         temp_path = Path(temp_path_str)
 
         try:
@@ -120,7 +109,7 @@ class FileSecretStorage(SecretStorage):
                 pass
             raise
 
-    def _read_secure_file(self, file_path: Path) -> Optional[str]:
+    def _read_secure_file(self, file_path: Path) -> str | None:
         """Read content from file with security checks."""
         if not file_path.exists():
             return None
@@ -129,22 +118,22 @@ class FileSecretStorage(SecretStorage):
         try:
             check_file_permissions(file_path)
         except PermissionError:
-            logger.error("Security error")
+            logger.error("Security error")  # noqa: TRY400
             raise
 
         try:
             return file_path.read_text(encoding="utf-8")
         except OSError:
-            logger.error(f"Error reading {file_path}")
+            logger.error(f"Error reading {file_path}")  # noqa: TRY400
             raise
 
-    def load_oauth_tokens(self) -> Optional[OAuthTokens]:
+    def load_oauth_tokens(self) -> OAuthTokens | None:
         if not (content := self._read_secure_file(self.oauth_token_file)):
             return None
         try:
-            return OAuthTokens.model_validate(json.loads(content))
+            return OAuthTokens.model_validate(json.loads(content))  # type: ignore[no-any-return]
         except ValueError:
-            logger.error("Error parsing OAuth tokens")
+            logger.exception("Error parsing OAuth tokens")
             return None
 
     def save_oauth_tokens(self, tokens: OAuthTokens) -> None:
@@ -154,7 +143,7 @@ class FileSecretStorage(SecretStorage):
         if self.oauth_token_file.exists():
             self.oauth_token_file.unlink()
 
-    def load_long_lived_token(self) -> Optional[str]:
+    def load_long_lived_token(self) -> str | None:
         content = self._read_secure_file(self.lat_file)
         return content.strip() if content else None
 

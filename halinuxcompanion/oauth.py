@@ -4,13 +4,14 @@ import logging
 import secrets
 import webbrowser
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from functools import partial
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urlparse, urlunparse
 
-from aiohttp import ClientSession, web
+from aiohttp import ClientSession
 from pydantic import BaseModel
+
+from .constants import OAUTH_CALLBACK_PORT, SC_OK
 
 if TYPE_CHECKING:
     from .secrets import SecretStorage
@@ -21,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 class AuthenticationError(Exception):
     """Raised when OAuth authentication fails."""
-
-    pass
 
 
 def is_url_using_ip(url: str) -> bool:
@@ -64,12 +63,12 @@ class OAuthTokens(BaseModel):
     @property
     def is_expired(self) -> bool:
         """Check if token has actually expired."""
-        return datetime.now() >= self.expires_at
+        return datetime.now(timezone.utc) >= self.expires_at
 
     @property
     def expires_soon(self) -> bool:
         """Check if token expires within the next 60 seconds."""
-        return datetime.now() >= self.expires_at - timedelta(seconds=60)
+        return datetime.now(timezone.utc) >= self.expires_at - timedelta(seconds=60)
 
 
 @dataclass
@@ -81,6 +80,7 @@ class OAuthFlow:
     """
 
     ha_url: str
+    redirect_port: int = OAUTH_CALLBACK_PORT  # Can be overridden
     redirect_host: str = "localhost"
     state: str = field(init=False)  # Always set, generated in __post_init__
     _auth_code_future: asyncio.Future[str] = field(init=False)
@@ -91,7 +91,6 @@ class OAuthFlow:
         self.state = secrets.token_urlsafe(32)
         # Create future for auth code
         self._auth_code_future = asyncio.get_event_loop().create_future()
-        self.redirect_port = 9736
 
     @property
     def redirect_uri(self) -> str:
@@ -125,47 +124,6 @@ class OAuthFlow:
             )
         )
 
-    def _make_html_response(self, title: str, message: str) -> web.Response:
-        """Create an HTML response page."""
-        html = f"""<html>
-<head><title>{title}</title></head>
-<body>
-    <h1>{title}</h1>
-    <p>{message}</p>
-</body>
-</html>"""
-        return web.Response(text=html, content_type="text/html")
-
-    async def handle_callback(
-        self, request: web.Request, auth_code_future: asyncio.Future[str]
-    ) -> web.Response:
-        """Handle the OAuth callback from Home Assistant."""
-        try:
-            code = request.query.get("code")
-            state = request.query.get("state")
-
-            if not (code and state):
-                error_msg = request.query.get("error", "Unknown error")
-                if error_desc := request.query.get("error_description", ""):
-                    error_msg += f" - {error_desc}"
-                raise AuthenticationError(error_msg)
-
-            if state != self.state:
-                raise AuthenticationError(
-                    f"State mismatch in OAuth callback. Expected: {self.state}, Got: {state}"
-                )
-
-            # Set the auth code in the future
-            auth_code_future.set_result(code)
-            return self._make_html_response(
-                "Authentication successful!", "You can close this window now."
-            )
-
-        except AuthenticationError as e:
-            logger.error(str(e))
-            auth_code_future.set_exception(e)
-            return self._make_html_response("Authentication failed", str(e))
-
     async def _request_token(self, session: ClientSession, operation: str, data: dict):
         """Common method to request tokens from Home Assistant."""
         async with session.post(
@@ -173,26 +131,19 @@ class OAuthFlow:
             data=data | {"client_id": self.client_id},
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         ) as resp:
-            if resp.status != 200:
-                raise AuthenticationError(
-                    f"Token {operation} failed: {resp.status} - {await resp.text()}"
-                )
+            if resp.status != SC_OK:
+                raise AuthenticationError(f"Token {operation} failed: {resp.status} - {await resp.text()}")
 
             token_data = await resp.json()
         expires_delta = timedelta(seconds=token_data["expires_in"])
-        token_data["expires_at"] = (expires_at := datetime.now() + expires_delta)
+        token_data["expires_at"] = (expires_at := datetime.now(timezone.utc) + expires_delta)
 
-        logger.info(
-            f"Token {operation} successful, expires at {expires_at.isoformat()} "
-            f"({expires_delta} from now)"
-        )
+        logger.info(f"Token {operation} successful, expires at {expires_at.isoformat()} ({expires_delta} from now)")
         return token_data
 
-    async def exchange_code_for_token(
-        self, session: ClientSession, auth_code: str
-    ) -> OAuthTokens:
+    async def exchange_code_for_token(self, session: ClientSession, auth_code: str) -> OAuthTokens:
         """Exchange the authorization code for access and refresh tokens."""
-        return OAuthTokens.model_validate(
+        return OAuthTokens.model_validate(  # type: ignore[no-any-return]
             await self._request_token(
                 session,
                 "exchange",
@@ -203,9 +154,7 @@ class OAuthFlow:
             )
         )
 
-    async def refresh_access_token(
-        self, session: ClientSession, refresh_token: str
-    ) -> OAuthTokens:
+    async def refresh_access_token(self, session: ClientSession, refresh_token: str) -> OAuthTokens:
         """Refresh the access token using the refresh token."""
         refreshed = await self._request_token(
             session,
@@ -218,11 +167,12 @@ class OAuthFlow:
         # Refresh response does not include refresh_token, so we need to keep it
         return OAuthTokens(refresh_token=refresh_token, **refreshed)
 
-    async def run(self, storage: "SecretStorage") -> None:
-        """Run the complete OAuth authentication flow.
+    async def run(self, storage: "SecretStorage", server: Any) -> None:
+        """Run the complete OAuth authentication flow using the unified server.
 
         Args:
             storage: Secret storage backend to save tokens
+            server: The unified server instance
         """
         print(f"Starting OAuth authentication flow with {self.ha_url}")
         # Check if using IP address for OAuth
@@ -237,29 +187,36 @@ class OAuthFlow:
                 "See: https://www.home-assistant.io/docs/authentication/#error-invalid-client-id-or-redirect-url"
             )
 
-        # Set up temporary web server for callback
-        app = web.Application()
-        auth_code_future = asyncio.get_event_loop().create_future()
-        app.router.add_get(
-            "/auth/callback",
-            partial(self.handle_callback, auth_code_future=auth_code_future),
-        )
+        # Create future to receive the OAuth callback
+        request_future = asyncio.get_event_loop().create_future()
+        server.set_oauth_future(request_future)
 
-        logger.info(f"Starting OAuth callback server on port {self.redirect_port}")
-
-        runner = web.AppRunner(app)
-        await runner.setup()
         try:
-            await web.TCPSite(runner, self.redirect_host, self.redirect_port).start()
-
             print("\nOpening browser for authentication...")
             print(f"If browser doesn't open, please visit: {self.authorization_url}\n")
             webbrowser.open(self.authorization_url)
 
-            # Wait for auth code from callback
-            auth_code = await auth_code_future
+            # Wait for OAuth callback request
+            request = await request_future
+
+            # Process the callback
+            code = request.query.get("code")
+            state = request.query.get("state")
+
+            if not code:
+                error_msg = request.query.get("error", "Unknown error")
+                if error_desc := request.query.get("error_description", ""):
+                    error_msg += f" - {error_desc}"
+                raise AuthenticationError(error_msg)
+
+            if state != self.state:
+                raise AuthenticationError(f"State mismatch in OAuth callback. Expected: {self.state}, Got: {state}")
+
+            auth_code = code
+
         finally:
-            await runner.cleanup()
+            # Clear the OAuth future
+            server.set_oauth_future(None)
 
         # Exchange code for tokens
         async with ClientSession() as session:
@@ -297,9 +254,7 @@ async def ensure_valid_oauth_token(
     # Try to refresh
     logger.info("Access token expired, attempting to refresh...")
     try:
-        new_tokens = await OAuthFlow(ha_url).refresh_access_token(
-            session, oauth_tokens.refresh_token
-        )
+        new_tokens = await OAuthFlow(ha_url).refresh_access_token(session, oauth_tokens.refresh_token)
     except AuthenticationError:
         raise AuthenticationError(
             "OAuth token refresh failed.\n"

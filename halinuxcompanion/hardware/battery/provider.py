@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +26,15 @@ class BatteryData:
     time_to_full: int | None = None  # seconds
 
     # Power/energy metrics
-    charge_rate: Optional[float] = None  # W
-    discharge_rate: Optional[float] = None  # W
-    energy: Optional[float] = None  # Wh
-    energy_full: Optional[float] = None  # Wh
-    energy_full_design: Optional[float] = None  # Wh
+    charge_rate: float | None = None  # W
+    discharge_rate: float | None = None  # W
+    energy: float | None = None  # Wh
+    energy_full: float | None = None  # Wh
+    energy_full_design: float | None = None  # Wh
 
     # Battery health
-    capacity: Optional[float] = None  # percentage (0-100)
-    charge_cycles: Optional[int] = None
+    capacity: float | None = None  # percentage (0-100)
+    charge_cycles: int | None = None
 
     # Physical properties
     voltage: float | None = None  # V
@@ -65,11 +64,9 @@ class BatteryDataProvider(ABC):
     """Abstract base class for battery data providers."""
 
     @abstractmethod
-    async def discover_batteries(self) -> List[str]:
+    async def discover_batteries(self) -> list[str]:
         """Discover available battery identifiers."""
-        pass
 
     @abstractmethod
     async def get_battery_data(self, battery_id: str) -> BatteryData | None:
         """Get data for a specific battery."""
-        pass

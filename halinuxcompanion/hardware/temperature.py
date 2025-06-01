@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import List
 
 import psutil
 
@@ -24,7 +23,7 @@ class TemperatureHardwareClass(HardwareClass):
         # hw id => sensor label => sensor
         self._sensors: dict[str, dict[str, HardwareSensor]] = {}
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Discover available temperature chips."""
         if not (temps := psutil.sensors_temperatures()):
             logger.debug("No temperature sensors found")
@@ -52,16 +51,10 @@ class TemperatureHardwareClass(HardwareClass):
                 )
 
         self._sensors = sensors
-        logger.debug(
-            f"Discovered {len(self._sensors)} temperature chips: {' '.join(sorted(self._sensors.keys()))}"
-        )
+        logger.debug(f"Discovered {len(self._sensors)} temperature chips: {' '.join(sorted(self._sensors.keys()))}")
 
         # Construct all_sensors at the end
-        return [
-            sensor
-            for sensors_by_label in self._sensors.values()
-            for sensor in sensors_by_label.values()
-        ]
+        return [sensor for sensors_by_label in self._sensors.values() for sensor in sensors_by_label.values()]
 
     async def update_all_sensors(self) -> None:
         """Bulk update all temperature sensors in one read."""

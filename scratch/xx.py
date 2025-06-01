@@ -4,8 +4,9 @@
 
 import asyncio
 import sys
-from dbus_next.aio import MessageBus
+
 from dbus_next import BusType
+from dbus_next.aio import MessageBus
 
 
 async def find_device_path(bus, mac):
@@ -26,16 +27,12 @@ async def read_battery(bus, path):
     try:
         node = await bus.introspect("org.bluez", path)
         if "org.bluez.Battery1" in node.interfaces:
-            batt = bus.get_proxy_object("org.bluez", path, node).get_interface(
-                "org.bluez.Battery1"
-            )
+            batt = bus.get_proxy_object("org.bluez", path, node).get_interface("org.bluez.Battery1")
             return await batt.get_percentage()
     except Exception:
         pass
     # Fallback: BatteryPercentage property on Device1
-    dev = bus.get_proxy_object("org.bluez", path, None).get_interface(
-        "org.bluez.Device1"
-    )
+    dev = bus.get_proxy_object("org.bluez", path, None).get_interface("org.bluez.Device1")
     props = await dev.call_get_all()
     return props.get("BatteryPercentage")
 

@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 import pytest
 
+from halinuxcompanion.oauth import OAuthTokens
 from halinuxcompanion.secret_storage.file import (
     FileSecretStorage,
     check_file_permissions,
 )
-from halinuxcompanion.oauth import OAuthTokens
 
 
 @pytest.fixture

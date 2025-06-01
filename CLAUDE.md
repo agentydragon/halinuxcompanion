@@ -127,7 +127,7 @@ black . --line-length 120
           return None
   except Exception:
       return None
-  
+
   # GOOD - minimal scope
   try:
       with open(path, "r") as f:
@@ -135,7 +135,7 @@ black . --line-length 120
   except (OSError, IOError) as e:
       logger.error(f"Failed to read {path}: {e}")
       return None
-  
+
   if "error" in content:
       return None
   ```

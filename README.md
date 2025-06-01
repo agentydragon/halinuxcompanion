@@ -50,7 +50,7 @@ After initial registration, most operations (sensor updates) use webhook authent
    ```shell
    pip install git+https://github.com/benleb/halinuxcompanion.git
    ```
-   
+
    Or for development:
    ```shell
    git clone https://github.com/benleb/halinuxcompanion.git
@@ -59,31 +59,31 @@ After initial registration, most operations (sensor updates) use webhook authent
    ```
 
 1. Create configuration directory and copy example config:
-   
+
    ```shell
    mkdir -p ~/.config/halinuxcompanion
    # For TOML format (recommended):
    curl -o ~/.config/halinuxcompanion/config.toml https://raw.githubusercontent.com/benleb/halinuxcompanion/master/config.example.toml
    ```
-   
+
 1. Edit the configuration file to match your setup and desired options.
 1. Configure authentication using one of these methods:
-   
+
    **Option A: OAuth (Recommended)**
    ```shell
    halinuxcompanion --oauth
    ```
-   
+
    **Option B: Long-lived token**
    - [Get a token from your Home Assistant user profile](https://www.home-assistant.io/docs/authentication/#your-account-profile)
    - Add `"ha_token": "your-token-here"` to your config file
 
 1. Run the application:
-   
+
    ```shell
    halinuxcompanion
    ```
-   
+
    Or with a custom config location:
    ```shell
    halinuxcompanion --config /path/to/config.toml
@@ -93,7 +93,7 @@ After initial registration, most operations (sensor updates) use webhook authent
 To run halinuxcompanion as a systemd service:
 
 1. Create a systemd user service file:
-   
+
    ```shell
    mkdir -p ~/.config/systemd/user/
    cat > ~/.config/systemd/user/halinuxcompanion.service << EOF
@@ -101,27 +101,27 @@ To run halinuxcompanion as a systemd service:
    Description=Home Assistant Linux Companion
    Documentation=https://github.com/benleb/halinuxcompanion
    After=network-online.target
-   
+
    [Service]
    Type=simple
    ExecStart=$(which halinuxcompanion)
    Restart=always
    RestartSec=30
-   
+
    [Install]
    WantedBy=default.target
    EOF
    ```
 
 2. Enable and start the service:
-   
+
    ```shell
    systemctl --user daemon-reload
    systemctl --user enable --now halinuxcompanion
    ```
 
 3. Check status and logs:
-   
+
    ```shell
    systemctl --user status halinuxcompanion
    journalctl --user -u halinuxcompanion -f
@@ -149,7 +149,7 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
 ## To-do
 
 - [ ] [Implement encryption](https://developers.home-assistant.io/docs/api/native-app-integration/sending-data)
-- [ ] Move sensors to MQTT  
+- [ ] Move sensors to MQTT
     The reasoning for the change is the limitations of the API, naturally is expected that desktop and laptops would go offline and I would like for the sensors to reflect this new state. But if for some reason the application is unable to send this new state to Home Assistant the values of the sensors would be stuck. But if the app uses MQTT it can set will topics for the sensors to be updated when the client can't communicate with the server.
 - [ ] One day make it work with remote and local instance, for laptops roaming networks
 - [x] Status sensors that listens to sleep, wakeup, shutdown, power_on
@@ -230,7 +230,7 @@ halinuxcompanion provides two battery sensor implementations. Choose one based o
 | `vendor` | string | - | ✗ | ✓ | `"SMP"` |
 | `serial` | string | - | ✗ | ✓ | `"1234"` |
 
-¹ Only when discharging  
+¹ Only when discharging
 ² Only when charging
 
 ##### Battery State Values

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import List
 
 import psutil
 
@@ -24,7 +23,7 @@ class MemoryHardwareClass(HardwareClass):
         self.usage_percent_sensor = HardwareSensor(
             unique_id="memory:usage_percent",
             name="Memory Usage",
-            unit="%",
+            unit_of_measurement="%",
             state_class=StateClass.MEASUREMENT,
             icon="mdi:memory",
         )
@@ -33,7 +32,7 @@ class MemoryHardwareClass(HardwareClass):
             name="Memory Used",
             icon="mdi:memory",
             state_class=StateClass.MEASUREMENT,
-            unit="B",
+            unit_of_measurement="B",
             device_class=DeviceClass.DATA_SIZE,
         )
         self.available_sensor = HardwareSensor(
@@ -41,7 +40,7 @@ class MemoryHardwareClass(HardwareClass):
             name="Memory Available",
             icon="mdi:memory",
             state_class=StateClass.MEASUREMENT,
-            unit="B",
+            unit_of_measurement="B",
             device_class=DeviceClass.DATA_SIZE,
         )
 
@@ -51,7 +50,7 @@ class MemoryHardwareClass(HardwareClass):
         self.used_sensor.state = mem.used
         self.available_sensor.state = mem.available
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Discover all sensors for memory."""
         return [
             self.usage_percent_sensor,

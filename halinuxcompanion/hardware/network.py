@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import List
 
 import psutil
 
@@ -54,7 +53,7 @@ class NetworkInterfacePiece(HardwarePiece):
                 sensor.attributes = {"interface": self.hardware_id}
                 sensor.state = value
 
-    def get_sensors(self) -> List[HardwareSensor]:
+    def get_sensors(self) -> list[HardwareSensor]:
         """Get all sensors for this interface."""
         return list(
             filter(
@@ -77,14 +76,12 @@ class NetworkHardwareClass(PerPieceUpdateMixin, HardwareClass):
         super().__init__(config)
         self.config: NetworkConfig = config  # Type hint for IDE
 
-    async def discover_sensors(self) -> List[HardwareSensor]:
+    async def discover_sensors(self) -> list[HardwareSensor]:
         """Discover configured network interfaces that exist on the system."""
         available_interfaces = set(psutil.net_if_stats().keys())
         configured = set(self.config.interfaces)
         if missing := configured - available_interfaces:
-            logger.warning(
-                f"Configured network interfaces not found on system: {'  '.join(sorted(missing))}"
-            )
+            logger.warning(f"Configured network interfaces not found on system: {'  '.join(sorted(missing))}")
         all_sensors = []
         for iface in configured & available_interfaces:
             piece = NetworkInterfacePiece(iface)

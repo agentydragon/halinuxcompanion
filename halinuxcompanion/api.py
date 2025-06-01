@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientResponse, ClientSession, web
 
@@ -10,13 +11,15 @@ from .oauth import AuthenticationError, OAuthTokens, ensure_valid_oauth_token
 if TYPE_CHECKING:
     from .secrets import SecretStorage
 
-logger = logging.getLogger(__name__)
+from .constants import (
+    SC_INTEGRATION_DELETED,
+    SC_INVALID_JSON,
+    SC_MOBILE_COMPONENT_NOT_LOADED,
+    SC_UNAUTHORIZED,
+)
 
-SC_INVALID_JSON = 400
-SC_UNAUTHORIZED = 401
-SC_MOBILE_COMPONENT_NOT_LOADED = 404
-SC_INTEGRATION_DELETED = 410
-SESSION: Optional[ClientSession] = None
+logger = logging.getLogger(__name__)
+SESSION: ClientSession | None = None
 
 
 class API:
@@ -62,10 +65,9 @@ class API:
         token = self._get_valid_token()
         if token:
             return {"Authorization": f"Bearer {token}"}
-        else:
-            return {}
+        return {}
 
-    def _get_valid_token(self) -> Optional[str]:
+    def _get_valid_token(self) -> str | None:
         """Get a valid access token from either long-lived token or OAuth."""
         # Prefer long-lived token
         if self.token:
@@ -129,13 +131,9 @@ class API:
             if res.status == SC_INVALID_JSON:
                 logger.error(f"Invalid JSON {self.webhook_url}")
             if res.status == SC_MOBILE_COMPONENT_NOT_LOADED:
-                logger.error(
-                    f"The mobile_app component has not been loaded {self.webhook_url}"
-                )
+                logger.error(f"The mobile_app component has not been loaded {self.webhook_url}")
             elif res.status == SC_INTEGRATION_DELETED:
-                logger.error(
-                    f"Integration was deleted, need to re-register {self.webhook_url}"
-                )
+                logger.error(f"Integration was deleted, need to re-register {self.webhook_url}")
             return res
 
     async def get(self, endpoint: str, data=None, json=None) -> ClientResponse:
@@ -144,9 +142,7 @@ class API:
     async def post(self, endpoint: str, data=None, json=None) -> ClientResponse:
         return await self.request("POST", endpoint, data, json)
 
-    async def request(
-        self, method: str, endpoint: str, data=None, json=None
-    ) -> ClientResponse:
+    async def request(self, method: str, endpoint: str, data=None, json=None) -> ClientResponse:
         """Send a request to the given Home Assisntat endpoint.
 
         :param method: The HTTP method to use (GET, POST, etc.)
@@ -173,27 +169,79 @@ class API:
         if resp.status == SC_UNAUTHORIZED and self.oauth_tokens:
             # OAuth token might have just expired, try refreshing
             await self._ensure_authenticated()
-            return await _try()
+            return await _try()  # type: ignore[no-any-return]
 
-        return resp
+        return resp  # type: ignore[no-any-return]
 
 
 class Server:
-    """HTTP server that listens for notifications from Home Assistant."""
+    """Unified HTTP server for OAuth callbacks and Home Assistant notifications."""
 
     app: web.Application
     host: str
     port: int
+    runner: web.AppRunner
+    _oauth_future: asyncio.Future[web.Request] | None = None
+    _notification_handler: Any = None
 
     def __init__(self, companion: Companion) -> None:
         self.app = web.Application()
-        self.host = companion.computer_ip  # TODO: Rename to listen_address
-        self.port = companion.computer_port  # TODO: Rename to listen_port
+        self.host = companion.computer_ip  # Using legacy field name
+        self.port = companion.computer_port  # Using legacy field name
+        self.runner = web.AppRunner(self.app)
+
+        # Always register the OAuth callback route
+        self.app.router.add_get("/auth/callback", self._handle_oauth_callback)
+        # Always register the notification route
+        self.app.router.add_post("/notify", self._handle_notification)
+
+    async def __aenter__(self) -> "Server":
+        """Enter the async context manager and start the server."""
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit the async context manager and stop the server."""
+        await self.stop()
+
+    async def _handle_oauth_callback(self, request: web.Request) -> web.Response:
+        """Handle OAuth callback requests."""
+        if self._oauth_future is None or self._oauth_future.done():
+            return web.Response(text="No OAuth flow in progress", status=404)
+
+        # Extract code and state from request
+        code = request.query.get("code")
+
+        if code:
+            # Pass the entire request to the future for the OAuth flow to handle
+            self._oauth_future.set_result(request)
+        else:
+            error = request.query.get("error", "Unknown error")
+            self._oauth_future.set_exception(AuthenticationError(error))
+
+        return web.Response(text="Authentication received! You can close this window.", content_type="text/html")
+
+    def set_oauth_future(self, future: asyncio.Future[web.Request]) -> None:
+        """Set the future to receive OAuth callback data."""
+        self._oauth_future = future
+
+    async def _handle_notification(self, request: web.Request) -> web.Response:
+        """Handle notification requests from Home Assistant."""
+        if self._notification_handler is None:
+            return web.Response(text="Notification handler not configured", status=503)
+        return await self._notification_handler(request)  # type: ignore[no-any-return]
+
+    def set_notification_handler(self, handler: Any) -> None:
+        """Set the notification handler."""
+        self._notification_handler = handler
 
     async def start(self) -> None:
         logger.info(f"Starting http server on {self.host}:{self.port}")
-        runner = web.AppRunner(self.app)
-        await runner.setup()
-        site = web.TCPSite(runner, self.host, self.port)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, self.host, self.port)
         await site.start()
         logger.info(f"Server started on {self.host}:{self.port}")
+
+    async def stop(self) -> None:
+        """Stop the HTTP server."""
+        await self.runner.cleanup()

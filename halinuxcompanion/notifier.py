@@ -4,7 +4,7 @@ import logging
 import re
 from collections import OrderedDict
 from importlib.resources import files
-from typing import Any, Dict, List
+from typing import Any
 
 from aiohttp import ClientError
 from aiohttp.web import Response, json_response
@@ -40,7 +40,7 @@ EVENTS_ENDPOINT = {
     "action": "/api/events/mobile_app_notification_action",
 }
 
-EMPTY_DICT: Dict[str, Any] = {}
+EMPTY_DICT: dict[str, Any] = {}
 COMMAND_PREFIX = "command_"
 
 
@@ -52,21 +52,21 @@ class CommandNotification(BaseModel):
     command_id: str
 
 
-def _error_response(error: str, message: str, status: int):
+def _error_response(error: str, message: str, status: int) -> Response:
     return json_response(
         {"error": error, "errorMessage": message},
         status=status,
     )
 
 
-def _ok_response():
+def _ok_response() -> Response:
     return json_response(
         {"success": True, "message": "Notification queued"},
         status=201,
     )
 
 
-async def run_subprocess_with_logging(command: List[str], description: str) -> None:
+async def run_subprocess_with_logging(command: list[str], description: str) -> None:
     """Run a subprocess and log any errors that occur.
 
     Args:
@@ -81,9 +81,7 @@ async def run_subprocess_with_logging(command: List[str], description: str) -> N
         )
         stdout, stderr = await process.communicate()
     except Exception:
-        logger.error(
-            f"Failed to execute command {description}: {command}", exc_info=True
-        )
+        logger.exception(f"Failed to execute command {description}: {command}")
         return
 
     if process.returncode != 0:
@@ -107,20 +105,16 @@ class Notifier:
     """
 
     # Only keeping the last 20 notifications and popping everytime a new one is added
-    history: OrderedDict[int, dict] = OrderedDict(
-        (x, EMPTY_DICT) for x in range(-1, -21, -1)
-    )
-    tagtoid: Dict[str, int] = {}  # Lookup id from tag
+    history: OrderedDict[int, dict] = OrderedDict((x, EMPTY_DICT) for x in range(-1, -21, -1))
+    tagtoid: dict[str, int] = {}  # Lookup id from tag
     interface: ProxyInterface
     api: API
     push_token: str
     url_program: str
-    commands: Dict[str, CommandConfig]
+    commands: dict[str, CommandConfig]
     ha_url: str
 
-    async def init(
-        self, dbus: Dbus, api: API, webserverver: Server, companion: Companion
-    ) -> None:
+    async def init(self, dbus: Dbus, api: API, webserverver: Server, companion: Companion) -> None:
         """Function to initialize the notifier.
         1. Gets the dbus interface to send notifications and listen to events.
         2. Registers an http handler to the webserver for Home Assistant notifications.
@@ -133,9 +127,7 @@ class Notifier:
         """
         # Get the interface
         if not (interface := await dbus.get_interface("org.freedesktop.Notifications")):
-            logger.warning(
-                "Could not find org.freedesktop.Notifications interface, disabling notification support."
-            )
+            logger.warning("Could not find org.freedesktop.Notifications interface, disabling notification support.")
             return
 
         self.interface = interface
@@ -143,8 +135,8 @@ class Notifier:
         self.interface.on_action_invoked(self.on_action)
         self.interface.on_notification_closed(self.on_close)
 
-        # Setup http server route handler for incoming notifications
-        webserverver.app.router.add_route("POST", "/notify", self.on_ha_notification)
+        # Setup http server notification handler
+        webserverver.set_notification_handler(self.on_ha_notification)
 
         # API and necessary data
         self.api = api
@@ -188,14 +180,10 @@ class Notifier:
             command = self.commands.get(command_id)
             if not command:
                 # Got notificatoin command but none defined
-                logger.error(
-                    f"Received notification command {command_id}, but no command is defined"
-                )
+                logger.error(f"Received notification command {command_id}, but no command is defined")
                 return _error_response("command_not_found", "No such command", 404)
             # It's not a notification, but a command, therefore no dbus_notify
-            logger.info(
-                f"Executing notification command: {command_id}, name={command.name}"
-            )
+            logger.info(f"Executing notification command: {command_id}, name={command.name}")
             asyncio.create_task(
                 run_subprocess_with_logging(
                     command.command,
@@ -204,9 +192,7 @@ class Notifier:
             )
         raise ValueError(f"Unknown notification type: {type(transformed)}")
 
-    async def ha_event_trigger(
-        self, event: str, action: str = "", notification: dict = {}
-    ) -> bool:
+    async def ha_event_trigger(self, event: str, action: str = "", notification: dict = {}) -> bool:
         """Function to trigger the Home Assistant event given an event type and notification dictionary.
         Actions are first handled in on_action which decides wether to emit the event or not.
 
@@ -226,25 +212,20 @@ class Notifier:
             **notification["data"],
         }
         # Replaced by event_actions
-        if "actions" in data:
-            del data["actions"]
+        data.pop("actions", None)
 
         if event == "action":
             data["action"] = action
 
         try:
             res = await self.api.post(endpoint, json.dumps(data))
-            logger.info(
-                f"Sent Home Assistant {event=}, {endpoint=}, response={res.status}"
-            )
+            logger.info(f"Sent Home Assistant {event=}, {endpoint=}, response={res.status}")
             return True
         except ClientError:
-            logger.error("Error sending Home Assistant event")
+            logger.exception("Error sending Home Assistant event")
         return False
 
-    def notification_transform(
-        self, notification: dict
-    ) -> DBusNotification | CommandNotification:
+    def notification_transform(self, notification: dict) -> DBusNotification | CommandNotification:
         """Function to convert a Home Assistant notification to a dbus notification.
         This is done in a best effort manner, as the homeassistant notification format can't be fully translated.
         This function mutates the notification dict.
@@ -258,12 +239,10 @@ class Notifier:
 
         # Check if this is a command notification
         if notification["message"].startswith(COMMAND_PREFIX):
-            return CommandNotification(
-                command_id=notification["message"].removeprefix(COMMAND_PREFIX)
-            )
+            return CommandNotification(command_id=notification["message"].removeprefix(COMMAND_PREFIX))
 
         # Build notification components
-        actions: List[str] = ["default", "Default"]
+        actions: list[str] = ["default", "Default"]
         hints = NotificationHints()
         timeout: int = -1  # -1 means notification server decides how long to show
         replace_id: int = 0
@@ -298,18 +277,14 @@ class Notifier:
             # https://people.gnome.org/~mccann/docs/notification-spec/notification-spec-latest.html#urgency-levels
             # https://companion.home-assistant.io/docs/notifications/notifications-basic/#notification-channel-importance
             if "importance" in data:
-                hints.urgency = HA_TO_DBUS_URGENCY.get(
-                    data["importance"], UrgencyLevel.NORMAL
-                )
+                hints.urgency = HA_TO_DBUS_URGENCY.get(data["importance"], UrgencyLevel.NORMAL)
 
             # Timeout, convert seconds to milliseconds
             if "timeout" in data:
                 try:
                     timeout = int(float(data["timeout"]) * 1000)
                 except ValueError:
-                    logger.warning(
-                        f"Invalid timeout={data['timeout']!r}, using default"
-                    )
+                    logger.warning(f"Invalid timeout={data['timeout']!r}, using default")
                     timeout = -1
 
             # Replaces id:
@@ -345,9 +320,7 @@ class Notifier:
         logger.debug(f"Converted to DBusNotification: {dbus_notification}")
         return dbus_notification
 
-    async def dbus_notify(
-        self, dbus_notification: DBusNotification, original_notification: dict
-    ) -> None:
+    async def dbus_notify(self, dbus_notification: DBusNotification, original_notification: dict) -> None:
         """Function to send a native dbus notification.
         According to the following link:
             Section  org.freedesktop.Notifications.Notify
@@ -362,7 +335,7 @@ class Notifier:
         # Convert hints to D-Bus format
         hints_dict = dbus_notification.hints.to_dbus_dict()
 
-        id = await self.interface.call_notify(
+        id = await self.interface.call_notify(  # noqa: A001
             dbus_notification.app_name,
             dbus_notification.replaces_id,
             dbus_notification.app_icon,
@@ -397,9 +370,7 @@ class Notifier:
         """
         logger.info(f"Notification action dbus event received: {id=}, {action=}")
         if not (notification := self.history.get(id)):
-            logger.info(
-                f"No notification found for {id=}, doesn't belong to this application"
-            )
+            logger.info(f"No notification found for {id=}, doesn't belong to this application")
             return
 
         if action == "default":
@@ -429,10 +400,6 @@ class Notifier:
         """
         logger.info(f"Notification closed dbus event received: {id=}, {reason=}")
         if notification := self.history.get(id):
-            asyncio.create_task(
-                self.ha_event_trigger(event="closed", notification=notification)
-            )
+            asyncio.create_task(self.ha_event_trigger(event="closed", notification=notification))
         else:
-            logger.info(
-                f"No notification found for {id=}, doesn't belong to this applicaton"
-            )
+            logger.info(f"No notification found for {id=}, doesn't belong to this applicaton")

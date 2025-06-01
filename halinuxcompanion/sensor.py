@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Type
 
 from aiohttp import ClientError
 
@@ -20,17 +19,13 @@ from halinuxcompanion.hardware import (
 from halinuxcompanion.hardware.battery_hardware import BatteryHardwareClass
 from halinuxcompanion.hardware_base import HardwareClass, HardwareSensor
 
-if TYPE_CHECKING:
-    from halinuxcompanion.api import API
-    from halinuxcompanion.dbus import Dbus
+from .constants import SC_REGISTER_SENSOR
 
 logger = logging.getLogger(__name__)
 
-SC_REGISTER_SENSOR = 301
-
 # Map of hardware config fields to hardware classes
-HARDWARE_CLASSES: dict[str, Type[HardwareClass]] = {
-    hw_class.config_field: hw_class  # type: ignore[attr-defined, type-abstract]
+HARDWARE_CLASSES: dict[str, type[HardwareClass]] = {
+    hw_class.config_field: hw_class  # type: ignore[type-abstract]
     for hw_class in [
         BatteryHardwareClass,
         BluetoothHardwareClass,
@@ -73,9 +68,7 @@ class SensorManager:
         )
 
         prefix = f"Sensors update {self.update_counter}"
-        logger.info(
-            f"{prefix} with sensors: {' '.join(s.unique_id for s in self.sensors)}"
-        )
+        logger.info(f"{prefix} with sensors: {' '.join(s.unique_id for s in self.sensors)}")
 
         try:
             res = await self.api.webhook_post(
@@ -94,7 +87,7 @@ class SensorManager:
                 }
             )
         except ClientError as e:
-            logger.error(f"{prefix} failed with {e=}")
+            logger.exception(f"{prefix} failed with {e=}")
             return False
         if res.ok or res.status == SC_REGISTER_SENSOR:
             logger.info(f"{prefix} successful")
@@ -115,37 +108,26 @@ class SensorManager:
             if not hw_config.enabled:
                 continue
             logger.info(f"Discovering {hw_name} sensors...")
-            self.hardware_instances.append(hw_class(hw_config))  # type: ignore[abstract]
+            self.hardware_instances.append(hw_class(hw_config))
 
         for hw_instance in self.hardware_instances:
             self.sensors.extend(await hw_instance.discover_sensors())
 
         if not self.sensors:
-            logger.warning(
-                "No sensors discovered! Check sensor configuration and system capabilities."
-            )
+            logger.warning("No sensors discovered! Check sensor configuration and system capabilities.")
             return
 
-        logger.info(
-            f"Discovered {len(self.sensors)} sensors: {' '.join(sensor.unique_id for sensor in self.sensors)}"
-        )
+        logger.info(f"Discovered {len(self.sensors)} sensors: {' '.join(sensor.unique_id for sensor in self.sensors)}")
 
         # Register all discovered sensors
         await self._register_sensors()
 
         # Register D-Bus handlers for each sensor
-        await asyncio.gather(
-            *[
-                register_sensor_dbus_handlers(sensor, self.dbus)
-                for sensor in self.sensors
-            ]
-        )
+        await asyncio.gather(*[register_sensor_dbus_handlers(sensor, self.dbus) for sensor in self.sensors])
 
     async def _register_sensors(self) -> None:
         """Register all sensors with Home Assistant."""
-        await asyncio.gather(
-            *[self._register_sensor(sensor) for sensor in self.sensors]
-        )
+        await asyncio.gather(*[self._register_sensor(sensor) for sensor in self.sensors])
 
     async def _register_sensor(self, sensor: HardwareSensor) -> None:
         """Register a single sensor with Home Assistant."""
@@ -168,8 +150,6 @@ class SensorManager:
         res = await self.api.webhook_post(payload)
 
         if not (res.ok or res.status == SC_REGISTER_SENSOR):
-            raise RuntimeError(
-                f"Sensor registration failed for {sensor.unique_id} with {res.status=}"
-            )
+            raise RuntimeError(f"Sensor registration failed for {sensor.unique_id} with {res.status=}")
 
         logger.info(f"Sensor registration successful: {sensor.unique_id}")

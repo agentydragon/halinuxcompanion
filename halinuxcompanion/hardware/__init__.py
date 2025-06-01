@@ -1,23 +1,23 @@
 """Hardware class implementations."""
 
 from .battery_hardware import BatteryHardwareClass
-from .network import NetworkHardwareClass
-from .cpu import CPUHardwareClass
-from .memory import MemoryHardwareClass
-from .lid import LidHardwareClass
-from .temperature import TemperatureHardwareClass
-from .camera import CameraHardwareClass
 from .bluetooth import BluetoothHardwareClass
+from .camera import CameraHardwareClass
+from .cpu import CPUHardwareClass
+from .lid import LidHardwareClass
+from .memory import MemoryHardwareClass
+from .network import NetworkHardwareClass
+from .temperature import TemperatureHardwareClass
 from .uptime import UptimeHardwareClass
 
 __all__ = [
     "BatteryHardwareClass",
-    "NetworkHardwareClass",
-    "CPUHardwareClass",
-    "MemoryHardwareClass",
-    "LidHardwareClass",
-    "TemperatureHardwareClass",
-    "CameraHardwareClass",
     "BluetoothHardwareClass",
+    "CPUHardwareClass",
+    "CameraHardwareClass",
+    "LidHardwareClass",
+    "MemoryHardwareClass",
+    "NetworkHardwareClass",
+    "TemperatureHardwareClass",
     "UptimeHardwareClass",
 ]

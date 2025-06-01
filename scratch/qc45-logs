@@ -63,4 +63,3 @@ gdm-x-session[5469]: (**) Option "xkb_options" "terminate:ctrl_alt_bksp"
 gdm-x-session[5469]: (II) event23 - Rai's QC45 (AVRCP): is tagged by udev as: Keyboard
 gdm-x-session[5469]: (II) event23 - Rai's QC45 (AVRCP): device is a keyboard
 aw-qt.desktop[6160]: qt.qpa.input.events: scroll event from unregistered device 19
-

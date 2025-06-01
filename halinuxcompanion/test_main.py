@@ -9,7 +9,7 @@ from halinuxcompanion.notifier import Notifier
 def get_config() -> dict:
     with open("tests/config.json") as f:
         data = json.load(f)
-        return data
+        return data  # type: ignore[no-any-return]
 
 
 class RequestStub:

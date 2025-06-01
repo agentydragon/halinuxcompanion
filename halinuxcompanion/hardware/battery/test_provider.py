@@ -26,7 +26,6 @@ class TestBatteryData:
         for percent, plugged, state, expected_icon in test_cases:
             data = BatteryData(
                 battery_id="BAT0",
-                name="Test Battery",
                 percent=percent,
                 plugged=plugged,
                 state=state,
@@ -53,7 +52,6 @@ class TestBatteryData:
         for percent, plugged, state, expected_icon in test_cases:
             data = BatteryData(
                 battery_id="BAT0",
-                name="Test Battery",
                 percent=percent,
                 plugged=plugged,
                 state=state,
@@ -75,7 +73,6 @@ class TestBatteryData:
         for percent, plugged, expected_icon in test_cases:
             data = BatteryData(
                 battery_id="BAT0",
-                name="Test Battery",
                 percent=percent,
                 plugged=plugged,
                 state="Discharging" if not plugged else "Charging",
@@ -102,7 +99,6 @@ class TestBatteryData:
         for percent, plugged, expected_icon in boundaries:
             data = BatteryData(
                 battery_id="BAT0",
-                name="Test Battery",
                 percent=percent,
                 plugged=plugged,
                 state="Discharging",

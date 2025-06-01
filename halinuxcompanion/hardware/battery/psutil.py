@@ -41,7 +41,5 @@ class PsutilBatteryProvider(BatteryDataProvider):
             percent=battery.percent,
             plugged=battery.power_plugged,
             state=state,
-            time_to_empty=battery.secsleft
-            if battery.secsleft != -1 and not battery.power_plugged
-            else None,
+            time_to_empty=battery.secsleft if battery.secsleft != -1 and not battery.power_plugged else None,
         )

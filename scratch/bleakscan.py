@@ -62,15 +62,9 @@ async def dump(client: BleakClient):
             for desc in char.descriptors:
                 try:
                     data = await client.read_gatt_descriptor(desc.handle)
-                    print(
-                        f"      [Desc] {desc.uuid} (Handle {desc.handle}) "
-                        f"Value: {format_value(data)}"
-                    )
+                    print(f"      [Desc] {desc.uuid} (Handle {desc.handle}) Value: {format_value(data)}")
                 except Exception as e:
-                    print(
-                        f"      [Desc] {desc.uuid} (Handle {desc.handle}) "
-                        f"!read failed: {e}"
-                    )
+                    print(f"      [Desc] {desc.uuid} (Handle {desc.handle}) !read failed: {e}")
     print("=== END ===\n")
 
 
@@ -133,7 +127,7 @@ if __name__ == "__main__":
 [Service] 0000fe03-0000-1000-8000-00805f9b34fb (Handle 21)  Vendor specific
   [Char] f04eb177-3005-43a7-ac61-a390ddf83076 (Handle 22)  [write]
   [Char] 2beea05b-1879-4bb4-8a2f-72641f82420b (Handle 24)  [read,notify]
-         !read failed: 
+         !read failed:
       [Desc] 00002902-0000-1000-8000-00805f9b34fb (Handle 26) !read failed: Not connected
 [Service] 0000febe-0000-1000-8000-00805f9b34fb (Handle 5)  Bose Corporation
   [Char] c1c449f8-34d7-4c61-ad8a-4fb364f10b27 (Handle 19)  [write]
@@ -153,7 +147,7 @@ if __name__ == "__main__":
 
 bluetoothctl reports:
 
- ~/code/halinuxcompanion  agentydragon-wip wip ⇡3 +27 !20 ?5  bluetoothctl                                                                              system   12:49:44 
+ ~/code/halinuxcompanion  agentydragon-wip wip ⇡3 +27 !20 ?5  bluetoothctl                                                                              system   12:49:44
 Agent registered
 AdvertisementMonitor path registered
 [Rai's QC45]# info

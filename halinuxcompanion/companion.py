@@ -4,17 +4,16 @@ import logging
 import platform
 import secrets
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING
 
 import aiohttp
 from pydantic import BaseModel, ConfigDict, Field
 from xdg_base_dirs import xdg_state_home
 
+from .constants import DEFAULT_NOTIFIER_PORT, SC_INTEGRATION_DELETED, SC_OK
 from .hardware_config import HardwareConfig
 from .models import RegistrationData
 from .secrets import SecretStorageBackend
-
-SC_INTEGRATION_DELETED = 410
 
 if TYPE_CHECKING:
     from halinuxcompanion.api import API
@@ -22,18 +21,18 @@ if TYPE_CHECKING:
 
 def get_state_dir() -> Path:
     """Get the state directory path using XDG_STATE_HOME."""
-    return xdg_state_home() / "halinuxcompanion"
+    return Path(xdg_state_home() / "halinuxcompanion")
 
 
 class CommandConfig(BaseModel):
     name: str
-    command: List[str]
+    command: list[str]
 
 
 class NotificationServiceConfig(BaseModel):
     enabled: bool
     url_program: str
-    commands: Dict[str, CommandConfig] = Field(default_factory=dict)
+    commands: dict[str, CommandConfig] = Field(default_factory=dict)
 
 
 class ServicesConfig(BaseModel):
@@ -47,8 +46,9 @@ class CompanionConfig(BaseModel):
     device_name: str | None
     manufacturer: str | None
     model: str | None
-    computer_port: int = 8400
-    computer_ip: str
+    # Legacy field names kept for backward compatibility
+    computer_port: int = Field(default=DEFAULT_NOTIFIER_PORT, alias="notifier_listen_port")
+    computer_ip: str = Field(alias="notifier_listen_address")
     refresh_interval: int = 15
     hardware: HardwareConfig
     services: ServicesConfig
@@ -85,7 +85,8 @@ def load_state() -> State:
     if not state_path().exists():
         return State()
     with open(state_path()) as f:
-        return State.model_validate(json.load(f))
+        data = json.load(f)
+        return State.model_validate(data)  # type: ignore[no-any-return]
 
 
 def save_state(state):
@@ -175,7 +176,7 @@ class Companion:
         if push_token := self.load_or_generate_push_token():
             app_data = {
                 "push_token": push_token,
-                "push_url": f"http://{self.computer_ip}:{self.computer_port}/notify",
+                "push_url": f"http://{self.computer_ip}:{self.computer_port}/notify",  # TODO: use new field names after config migration
             }
         payload = {
             "device_id": self.device_id,
@@ -196,11 +197,9 @@ class Companion:
         try:
             res = await api.post("/api/mobile_app/registrations", json=payload)
             if not res.ok:
-                raise Exception(
-                    f"Device registration failed with {res.status}: {await res.text()}"
-                )
+                raise RuntimeError(f"Device registration failed with {res.status}: {await res.text()}")
         except (aiohttp.ClientError, asyncio.TimeoutError):
-            logger.error("Device registration failed")
+            logger.exception("Device registration failed")
             raise
 
         registration_data = RegistrationData.model_validate(await res.json())
@@ -233,12 +232,10 @@ class Companion:
         if self.state.registration_data:
             api.registration = self.state.registration_data
             res = await api.webhook_post({"type": "get_config"})
-            if res.status == 200:
+            if res.status == SC_OK:
                 return self.state.registration_data
             if res.status != SC_INTEGRATION_DELETED:
-                raise Exception(f"Failed to get config via webhook {res.status=}")
+                raise RuntimeError(f"Failed to get config via webhook {res.status=}")
 
-        logger.info(
-            "Registration data not found or needing re-registration, registering device"
-        )
-        return await self.register(api)
+        logger.info("Registration data not found or needing re-registration, registering device")
+        return await self.register(api)  # type: ignore[no-any-return]

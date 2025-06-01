@@ -88,6 +88,107 @@ exclude_lines = [
     "if __name__ == .__main__.:",
 ]
 
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "YTT",   # flake8-2020
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "C4",    # flake8-comprehensions
+    "DTZ",   # flake8-datetimez
+    "T10",   # flake8-debugger
+    "EXE",   # flake8-executable
+    "ISC",   # flake8-implicit-str-concat
+    "ICN",   # flake8-import-conventions
+    "G",     # flake8-logging-format
+    "PIE",   # flake8-pie
+    "T20",   # flake8-print
+    "PT",    # flake8-pytest-style
+    "RET",   # flake8-return
+    "SIM",   # flake8-simplify
+    "TID",   # flake8-tidy-imports
+    "TCH",   # flake8-type-checking
+    "ARG",   # flake8-unused-arguments
+    "PTH",   # flake8-use-pathlib
+    "ERA",   # eradicate
+    "PD",    # pandas-vet
+    "PGH",   # pygrep-hooks
+    "PL",    # pylint
+    "TRY",   # tryceratops
+    "NPY",   # NumPy-specific rules
+    "RUF",   # Ruff-specific rules
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "PLR0913",  # too many arguments
+    "PLR2004",  # magic value comparison
+    "TRY003",  # long exception messages
+    "ERA001",  # commented-out code (sometimes useful for debugging)
+    "PLR0912",  # too many branches (sometimes necessary)
+    "PLW0603",  # global statement (needed for session management)
+    "G004",  # logging with f-string (more readable)
+    "PTH123",  # open() vs Path.open() (both are fine)
+    "T201",  # print statements (needed in CLI and scripts)
+    "RUF001",  # ambiguous unicode (not a real issue)
+    "RUF003",  # ambiguous unicode in comments
+    "EXE001",  # shebang in non-executable (scratch files)
+    "TID252",  # relative imports from parent (fine for internal packages)
+    "TC001",   # move imports to TYPE_CHECKING (not always beneficial)
+    "TC004",   # move imports out of TYPE_CHECKING (conflicts with TC001)
+    "ARG001",  # unused function arguments (sometimes needed for interfaces)
+    "A002",    # shadowing builtins (sometimes id is the best name)
+    "A005",    # module shadows stdlib (our secrets.py is fine)
+    "B023",    # function doesn't bind loop variable (often false positive)
+    "PTH207",  # prefer Path.glob (glob is fine)
+    "RET504",  # unnecessary assignment before return (sometimes clearer)
+    "RUF006",  # asyncio dangling task (fire-and-forget is fine)
+    "RUF012",  # mutable class attributes (Pydantic handles these)
+    "TRY300",  # consider returning exception (not always appropriate)
+    "TRY301",  # raise within try (sometimes necessary)
+    "TRY401",  # redundant exception in logging.exception (false positives)
+    "B006",    # mutable default argument (handled properly)
+    "B007",    # unused loop variable (sometimes intentional)
+    "B904",    # raise without from inside except (not always needed)
+    "DTZ005",  # datetime without timezone (fixing these gradually)
+    "SIM105",  # use contextlib.suppress (explicit is clearer)
+    "UP038",   # use | in isinstance (not always clearer)
+    "EXE005",  # shebang with whitespace (minor issue)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["T20"]  # allow print in tests
+"**/__main__.py" = ["T20"]  # allow print in CLI
+
+[tool.ruff.lint.isort]
+known-first-party = ["halinuxcompanion"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+ignore_missing_imports = true
+exclude = [
+    "scratch/",
+]
+
 [tool.tox]
 legacy_tox_ini = """
 [tox]
