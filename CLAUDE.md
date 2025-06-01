@@ -20,7 +20,7 @@ pip install -e ".[dev]"
 ### Authentication
 ```bash
 # Run OAuth authentication flow (recommended)
-halinuxcompanion --oauth
+halinuxcompanion oauth
 
 # Or configure long-lived token in config file
 # ha_token: "your-long-lived-token"
@@ -36,6 +36,12 @@ halinuxcompanion
 
 # Run with custom config
 halinuxcompanion --config /path/to/config.toml
+
+# View current sensor states
+halinuxcompanion sensor-states
+
+# Clean up unused sensors
+halinuxcompanion cleanup-sensors
 ```
 
 ### Testing & Linting

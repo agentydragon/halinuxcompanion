@@ -3,7 +3,6 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Type, TypeVar
 
@@ -16,15 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Type variable for sensor data
 TSensorData = TypeVar("TSensorData")
-
-
-@dataclass
-class SensorMetadata:
-    """Metadata for a sensor instance."""
-
-    name: str
-    config_name: str
-    icon: str | None = None
 
 
 class HardwarePiece:
@@ -55,24 +45,24 @@ class SensorType(str, Enum):
 
 
 """
-  - apparent_power
-  - conductivity
-  - data_rate
-  - date
-  - distance
-  - energy
-  - energy_distance
-  - enum
-  - power_factor
-  - pressure
-  - reactive_power
-  - signal_strength
-  - sound_pressure
-  - speed
-  - timestamp
-  - unit_price
-  - volume
-  """
+- apparent_power
+- conductivity
+- data_rate
+- date
+- distance
+- energy
+- energy_distance
+- enum
+- power_factor
+- pressure
+- reactive_power
+- signal_strength
+- sound_pressure
+- speed
+- timestamp
+- unit_price
+- volume
+"""
 
 
 class DeviceClass(str, Enum):

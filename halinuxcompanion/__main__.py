@@ -164,7 +164,9 @@ async def cleanup_sensors(companion: Companion) -> None:
 
 
 def commandline() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Home Assistan Linux Companion")
+    parser = argparse.ArgumentParser(description="Home Assistant Linux Companion")
+
+    # Global arguments
     parser.add_argument(
         "-c",
         "--config",
@@ -178,21 +180,24 @@ def commandline() -> argparse.Namespace:
         help="Log level",
         default="",
     )
-    parser.add_argument(
-        "--oauth",
-        action="store_true",
-        help="Run OAuth authentication flow and exit",
+
+    # Create subparsers
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # OAuth command
+    _oauth_parser = subparsers.add_parser("oauth", help="Run OAuth authentication flow")
+
+    # Sensor states command
+    _sensor_states_parser = subparsers.add_parser(
+        "sensor-states", help="Print current sensor states"
     )
-    parser.add_argument(
-        "--sensor-states",
-        action="store_true",
-        help="Print current sensor states and exit",
-    )
-    parser.add_argument(
-        "--cleanup-sensors",
-        action="store_true",
+
+    # Cleanup sensors command
+    _cleanup_parser = subparsers.add_parser(
+        "cleanup-sensors",
         help="List and optionally delete sensors that are no longer being updated",
     )
+
     return parser.parse_args()
 
 
@@ -227,61 +232,63 @@ async def main():
     # Companion objet where configuration is stored
     companion = Companion(config)
 
-    # Handle OAuth flow if requested
-    if args.oauth:
+    # Handle subcommands
+    if args.command == "oauth":
         await OAuthFlow(companion.ha_url).run(storage)
         print("\nOAuth authentication successful.")
         sys.exit(0)
 
-    api = API(companion, storage)  # API client to send data to Home Assistant
-    await companion.load_or_register(api)
-    api.registration = companion.state.registration_data
+    # For commands that need API, create it first
+    if args.command in ["sensor-states", "cleanup-sensors", "run", None]:
+        api = API(companion, storage)  # API client to send data to Home Assistant
+        await companion.load_or_register(api)
+        api.registration = companion.state.registration_data
 
-    # Handle sensor states reporting if requested
-    if args.sensor_states:
+    if args.command == "sensor-states":
         await print_sensor_states(companion)
         sys.exit(0)
 
-    # Handle sensor cleanup if requested
-    if args.cleanup_sensors:
+    if args.command == "cleanup-sensors":
         await cleanup_sensors(companion)
         sys.exit(0)
 
-    # Check if we have any authentication configured
-    if not api.has_valid_auth():
-        logger.critical(
-            "No valid authentication found!\n\n"
-            "Please configure authentication using one of these methods:\n"
-            "1. Add 'ha_token' to your config file with a long-lived access token\n"
-            "   See: https://www.home-assistant.io/docs/authentication/#your-account-profile\n"
-            "2. Run OAuth authentication: halinuxcompanion --oauth\n"
-        )
-        sys.exit(1)
-    # Initialize dbus connections
-    bus = Dbus()
-    await bus.init()
-    # Register sensors
-    sensor_manager = SensorManager(api=api, dbus=bus)
+    # Default behavior: run the service (when no command or "run" command)
+    if args.command is None:
+        # Check if we have any authentication configured
+        if not api.has_valid_auth():
+            logger.critical(
+                "No valid authentication found!\n\n"
+                "Please configure authentication using one of these methods:\n"
+                "1. Add 'ha_token' to your config file with a long-lived access token\n"
+                "   See: https://www.home-assistant.io/docs/authentication/#your-account-profile\n"
+                "2. Run OAuth authentication: halinuxcompanion oauth\n"
+            )
+            sys.exit(1)
+        # Initialize dbus connections
+        bus = Dbus()
+        await bus.init()
+        # Register sensors
+        sensor_manager = SensorManager(api=api, dbus=bus)
 
-    try:
-        await sensor_manager.discover_and_register_sensors()
-    except:
-        logger.critical("Sensor registration failed")
-        raise
+        try:
+            await sensor_manager.discover_and_register_sensors()
+        except:
+            logger.critical("Sensor registration failed")
+            raise
 
-    # Initialize the notifier which implies the webserver and the dbus interface
-    if companion.notifier:
-        # TODO: Session bus is initialized already.
-        # DBus session client to send desktop notifications and listen to signals
-        # Notifier behavior: HA -> Webserver -> dbus ... dbus -> event_handler -> HA
-        server = Server(companion)  # HTTP server that handles notifications
-        await Notifier().init(bus, api, server, companion)
-        await server.start()
+        # Initialize the notifier which implies the webserver and the dbus interface
+        if companion.notifier:
+            # TODO: Session bus is initialized already.
+            # DBus session client to send desktop notifications and listen to signals
+            # Notifier behavior: HA -> Webserver -> dbus ... dbus -> event_handler -> HA
+            server = Server(companion)  # HTTP server that handles notifications
+            await Notifier().init(bus, api, server, companion)
+            await server.start()
 
-    # Loop forever updating sensors.
-    while True:
-        await sensor_manager.update_sensors()
-        await asyncio.sleep(companion.refresh_interval)
+        # Loop forever updating sensors.
+        while True:
+            await sensor_manager.update_sensors()
+            await asyncio.sleep(companion.refresh_interval)
 
 
 def run():
