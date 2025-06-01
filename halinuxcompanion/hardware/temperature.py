@@ -45,7 +45,7 @@ class TemperatureHardwareClass(HardwareClass):
                 sensors[chip_name][temp.label] = HardwareSensor(
                     unique_id=unique_id,
                     name=name,
-                    unit="°C",
+                    unit_of_measurement="°C",
                     device_class=DeviceClass.TEMPERATURE,
                     state_class=StateClass.MEASUREMENT,
                     icon="mdi:thermometer",

@@ -39,6 +39,7 @@ repos:
           - homeassistant-stubs
           - types-Markdown
           - types-toml
+          - types-tabulate
 
   # Buildifier for Bazel files
   - repo: https://github.com/keith/pre-commit-buildifier

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Type, TypeVar
 from pydantic import BaseModel, Field
 
 from .hardware_config import HardwareClassConfig
+from .units import ureg
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +122,8 @@ class HardwareSensor(BaseModel):
 
     type: SensorType = SensorType.SENSOR
     unique_id: str
-    name: str
-    unit: str | None = None  # TODO: ... of_measurement
+    name: str | None = None
+    unit_of_measurement: str | None = None
     device_class: DeviceClass | None = None
     state_class: StateClass = StateClass.MEASUREMENT
     icon: str | None = None
@@ -130,6 +131,22 @@ class HardwareSensor(BaseModel):
     # Sensor state - will be populated by the hardware class
     state: Any = None
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def state_str(self) -> str:
+        """Return the state as a string."""
+        if self.state is None or isinstance(self.state, str):
+            s = str(self.state)
+            if self.unit_of_measurement:
+                s += f" {self.unit_of_measurement}"
+            return s
+        if isinstance(self.state, bool) and self.unit_of_measurement is None:
+            return str(self.state).lower()
+        assert isinstance(self.state, (int, float))
+        q = ureg.Quantity(self.state, self.unit_of_measurement)
+        # TODO: would be nice to cut off extra precision
+        # this returns e.g.: 49.792443999999996 MB
+        return f"{q:~#P}"
 
 
 class HardwareProvider(ABC):
@@ -147,6 +164,8 @@ class HardwareProvider(ABC):
 
 class HardwareClass(ABC):
     """Base class for a hardware class (e.g., battery, network)."""
+
+    config_field: str
 
     def __init__(self, config: HardwareClassConfig):
         """Initialize hardware class with configuration.

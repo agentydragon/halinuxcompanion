@@ -1,0 +1,72 @@
+disconnected Shokz:
+  org.freedesktop.DBus.Introspectable org.bluez.Device1 org.freedesktop.DBus.Properties org.bluez.MediaControl1
+
+disconnected Bose QC45:
+  {'Address': ('s', 78:2B:64:A1:0E:1E),
+   'AddressType': ('s', public), 'Name': ('s', Rai's QC45), 'Alias': ('s', Rai's QC45),
+   'Class': ('u', 2360344), 'Icon': ('s', audio-headphones), 'Paired': ('b', True),
+   'Trusted': ('b', True), 'Blocked': ('b', False), 'LegacyPairing': ('b', False),
+   'Connected': 'b'False,
+   'UUIDs': ('as', [
+       '00000000-deca-fade-deca-deafdecacaff',
+       '00001101-0000-1000-8000-00805f9b34fb',
+       '00001108-0000-1000-8000-00805f9b34fb',
+       '0000110b-0000-1000-8000-00805f9b34fb',
+       '0000110c-0000-1000-8000-00805f9b34fb',
+       '0000110d-0000-1000-8000-00805f9b34fb',
+       '0000110e-0000-1000-8000-00805f9b34fb',
+       '0000111e-0000-1000-8000-00805f9b34fb',
+       '0000112f-0000-1000-8000-00805f9b34fb',
+       '00001200-0000-1000-8000-00805f9b34fb',
+       '9b26d8c0-a8ed-440b-95b0-c4714a518bcc']),
+   'Modalias': 's'bluetooth:v009Ep4039d0404,e'Adapter': ('o', /org/bluez/hci0),
+   'ServicesResolved': ('b', False)}
+connected Bose QC45:
+  ifaces:
+    {'org.freedesktop.DBus.Introspectable': {},
+     'org.bluez.Device1': {
+       <SAME AS DISCONNECTED>: Address AddressType Name Alias Icon UUIDs Modalias Adapter LegacyPairing
+       'Class': ('u', 2360344),
+       'Paired': 'b'True,
+       'Trusted': 'b'True,
+       'Blocked': 'b'False,
+       'Connected': 'b'True,
+       'ServicesResolved': 'b'True
+     },
+     'org.freedesktop.DBus.Properties': {},
+     'org.bluez.MediaControl1': {'Connected': ('b', True), 'Player': ('o', /org/bluez/hci0/dev_78_2B_64_A1_0E_1E/player0)},
+     'org.bluez.Battery1': {'Percentage': ('y', 100)}}
+
+connected Shokz:
+  dev:
+    {'Address': 'A8:F5:E1:77:2C:59',
+     'AddressType': 'public',
+     'Name': 'OpenRun Pro 2 by Shokz',
+     'Alias': 'OpenRun Pro 2 by Shokz',
+     'Class': 'u'2360324,
+     'Icon': 'audio-headset',
+     'Paired': ('b', True),
+     'Trusted': ('b', True),
+     'Blocked': ('b', False),
+     'LegacyPairing': ('b', False),
+     'Connected': ('b', True),
+     'UUIDs': ('as', ['0000110b-0000-1000-8000-00805f9b34fb',
+                      '0000110c-0000-1000-8000-00805f9b34fb',
+                      '0000110d-0000-1000-8000-00805f9b34fb',
+                      '0000110e-0000-1000-8000-00805f9b34fb',
+                      '0000111e-0000-1000-8000-00805f9b34fb',
+                      '00001200-0000-1000-8000-00805f9b34fb',
+                      '00001800-0000-1000-8000-00805f9b34fb',
+                      '00001801-0000-1000-8000-00805f9b34fb',
+                      '0000fef0-0000-1000-8000-00805f9b34fb',
+                      '66666666-6666-6666-6666-666666666666',
+                      '86868686-8686-8686-8686-868686868686']),
+     'Modalias': ('s', bluetooth:v02B0p0000d001F),
+     'Adapter': ('o', /org/bluez/hci0),
+     'ServicesResolved': ('b', True)}
+  ifaces:
+    {'org.freedesktop.DBus.Introspectable': {},
+     'org.bluez.Device1': (see dev),
+     'org.freedesktop.DBus.Properties': {},
+     'org.bluez.MediaControl1': {'Connected': ('b', True)},
+     'org.bluez.Battery1': {'Percentage': ('y', 100)}}

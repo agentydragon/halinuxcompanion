@@ -16,7 +16,6 @@ class BatteryData:
 
     # Identity
     battery_id: str
-    name: str
 
     # Basic info
     percent: float
@@ -24,8 +23,8 @@ class BatteryData:
     state: str  # "Charging", "Discharging", "Full", "Unknown"
 
     # Time estimates
-    time_to_empty: Optional[int] = None  # seconds
-    time_to_full: Optional[int] = None  # seconds
+    time_to_empty: int | None = None  # seconds
+    time_to_full: int | None = None  # seconds
 
     # Power/energy metrics
     charge_rate: Optional[float] = None  # W
@@ -39,41 +38,27 @@ class BatteryData:
     charge_cycles: Optional[int] = None
 
     # Physical properties
-    voltage: Optional[float] = None  # V
-    temperature: Optional[float] = None  # °C
+    voltage: float | None = None  # V
+    temperature: float | None = None  # °C
 
-    # Device info
-    technology: Optional[str] = None
-    model: Optional[str] = None
-    vendor: Optional[str] = None
-    serial: Optional[str] = None
-
-    # Status flags
-    warning_level: Optional[int] = (
-        None  # UPower warning level: 1=None, 2=Discharging, 3=Low, 4=Critical, 5=Action
-    )
+    # Device info not pulled: technology, model, vendor, serial, upower warning_level
 
     def get_icon(self) -> str:
         """Get appropriate battery icon based on state and level."""
         # Calculate the battery level bucket (0-10)
-        level = max(0, min(10, int(self.percent / 10)))
-
-        if self.percent < 10 and not self.plugged:
-            return "mdi:battery-alert"
-
-        # Build icon name
-        base = "mdi:battery"
-        if self.plugged:
-            base += "-charging"
-
-        if level <= 10:
-            base += f"-{level * 10}"
-        else:
-            # Shouldn't happen - percent > 100%
+        parts = ["mdi:battery"]
+        if self.percent > 100:
             logger.warning(f"Battery percentage {self.percent}% exceeds 100%")
-            return "mdi:battery-unknown"
-
-        return base
+            parts.append("unknown")
+            return "-".join(parts)
+        if self.percent < 10 and not self.plugged:
+            parts.append("alert")
+            return "-".join(parts)
+        if self.plugged:
+            parts.append("charging")
+        level = max(0, min(10, int(self.percent / 10)))
+        parts.append(str(level * 10))
+        return "-".join(parts)
 
 
 class BatteryDataProvider(ABC):
@@ -85,6 +70,6 @@ class BatteryDataProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_battery_data(self, battery_id: str) -> Optional[BatteryData]:
+    async def get_battery_data(self, battery_id: str) -> BatteryData | None:
         """Get data for a specific battery."""
         pass

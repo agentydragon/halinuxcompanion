@@ -30,7 +30,7 @@ class UptimeHardwareClass(PerPieceUpdateMixin, HardwareClass):
         self.sensor = HardwareSensor(
             unique_id="uptime",
             name="Uptime",
-            unit="s",
+            unit_of_measurement="s",
             device_class="duration",
             state_class=StateClass.TOTAL_INCREASING,
             icon="mdi:clock-outline",

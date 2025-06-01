@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, TypeVar, overload
+from typing import List, Optional, TypeVar, overload
 
 from dbus_next import BusType, Variant
 from dbus_next.aio import MessageBus
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 class BluetoothData:
     """Bluetooth device data."""
 
-    mac: str
     name: Optional[str]
     visible: bool
     connected: bool
@@ -55,40 +54,59 @@ def expect_variant(v: Variant, py_type: type[T] | tuple[type[T], ...]) -> T:
 class BluetoothPiece(HardwarePiece):
     """Represents a Bluetooth device."""
 
-    def __init__(
-        self,
-        hardware_id: str,
-        mac: str,
-        battery_sensor: HardwareSensor,
-        connected_sensor: HardwareSensor,
-        visible_sensor: HardwareSensor,
-    ):
-        super().__init__(hardware_id)
+    def __init__(self, mac: str):
+        super().__init__(mac)
         self.mac = mac
-        self.name = None  # Will be discovered through Bluetooth.
-        self.battery_sensor = battery_sensor
-        self.connected_sensor = connected_sensor
-        self.visible_sensor = visible_sensor  # TOOD: daaclass
 
-    def _sensor_attributes(self) -> Dict[str, str]:
-        """Return attributes for sensors."""
-        attributes = {"mac": self.mac}
-        if self.name:
-            attributes["name"] = self.name
-        return attributes
+        def _sensor(id, **kwargs):
+            # name will be set later
+            return HardwareSensor(unique_id=f"bluetooth:{mac}:{id}", **kwargs)
+
+        self.battery_sensor = _sensor(
+            "battery_level",
+            unit_of_measurement="%",
+            device_class=DeviceClass.BATTERY,
+            state_class=StateClass.MEASUREMENT,
+            icon="mdi:battery-bluetooth",
+        )
+        self.connected_sensor = _sensor(
+            "connected",
+            type=SensorType.BINARY_SENSOR,
+            device_class=DeviceClass.CONNECTIVITY,
+            icon="mdi:bluetooth-connect",
+        )
+        self.visible_sensor = _sensor(
+            "visible",
+            type=SensorType.BINARY_SENSOR,
+            icon="mdi:bluetooth-audio",
+        )
+
+        self.name: str | None = None  # last known name
+
+    def _apply_update(self, data: BluetoothData) -> None:
+        if data.name and data.name != self.name:
+            # Only update if name set and changed
+            logger.info(
+                f"Updating name for {self.mac} from {self.name} to '{data.name}'"
+            )
+            self.name = data.name
+
+        if not data.name and self.name:
+            logger.debug(f"Name of {self.mac} lost, using last seen name '{self.name}'")
+
+        for sensor, subname, value in [
+            (self.visible_sensor, "Battery", data.visible),
+            (self.connected_sensor, "Connected", data.connected),
+            (self.battery_sensor, "Visible", data.battery_percentage),
+        ]:
+            sensor.attributes = {"mac": self.mac, "name": self.name}
+            sensor.name = f"{self.name or self.mac} {subname}"
+            sensor.state = value if data else None
 
     async def update(self) -> None:
         """Update all sensors for this Bluetooth device."""
-        for sensor in self.get_sensors():
-            sensor.attributes = self._sensor_attributes()
-
         data = await self._fetch_sensor_data()
-        for sensor, value in [  # type: ignore[assignment]
-            (self.visible_sensor, data.visible),
-            (self.connected_sensor, data.connected),
-            (self.battery_sensor, data.battery_percentage),
-        ]:
-            sensor.state = value if data else None
+        self._apply_update(data)
 
     def get_sensors(self) -> List[HardwareSensor]:
         return [self.battery_sensor, self.connected_sensor, self.visible_sensor]
@@ -97,93 +115,44 @@ class BluetoothPiece(HardwarePiece):
         """Fetch fresh sensor data for this Bluetooth device."""
         # Get device info via D-Bus
         bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-        path, interfaces = await self._find_device(bus)
-        if not path or not interfaces:
-            return BluetoothData(
-                visible=False,
-                connected=False,
-                name=self.name,
-                mac=self.mac,
-            )
-        # Get device properties
-        device_props = interfaces.get("org.bluez.Device1", {})
-
-        # Update device name if available (using walrus operator)
-        if name_prop := (device_props.get("Name") or device_props.get("Alias")):
-            if name_prop.value != self.name:
-                logger.info(
-                    f"Updating device name for {self.mac} from {self.name} to '{name_prop.value}'"
-                )
-            self.name = name_prop.value
-
-        # Connection status
-        if not (connected := device_props.get("Connected")):
-            logger.warning(f"Device {self.mac} does not have 'Connected' property")
-            connected_bool = False
-        else:
-            connected_bool = connected.value
-            assert isinstance(connected_bool, bool), (
-                "Connected property must be a boolean"
-            )
-
-        battery_percentage = await self._read_battery(bus, path, interfaces)
-
-        return BluetoothData(
-            visible=True,
-            connected=connected_bool,
-            name=self.name,
-            mac=self.mac,
-            battery_percentage=battery_percentage,
-        )
-
-    async def _find_device(
-        self, bus: MessageBus
-    ) -> Tuple[Optional[str], Optional[Dict]]:
-        """Find device by MAC address. Returns (path, interfaces) or (None, None)."""
-        root = await bus.introspect("org.bluez", "/")
-        om = bus.get_proxy_object("org.bluez", "/", root)
-        mgr = om.get_interface("org.freedesktop.DBus.ObjectManager")
-
+        # TODO: dedupe, use dbus.py
+        node = await bus.introspect("org.bluez", "/")
+        proxy = bus.get_proxy_object("org.bluez", "/", node)
+        objs = await proxy.get_interface(
+            "org.freedesktop.DBus.ObjectManager"
+        ).call_get_managed_objects()
         # Bluez keys:
         #   /org/bluez
         #   /org/bluez/hci0
         #   /org/bluez/hci0/dev_A8_F5_E1_77_2C_59  <- device path
         # TODO: do this with direct query at the right path instead of this scanning
         # but robustly to bluetooth device name
-        objs = await mgr.call_get_managed_objects()
-
-        for path, ifaces in objs.items():
+        for ifaces in objs.values():
             if (
                 (dev := ifaces.get("org.bluez.Device1"))
                 and (addr := dev.get("Address"))
-                and expect_variant(addr.value, str).upper() == self.mac.upper()
+                and expect_variant(addr, str).upper() == self.mac.upper()
             ):
-                return path, ifaces
+                break
+        else:
+            return BluetoothData(visible=False, connected=False, name=None)
 
-        return None, None
-
-    async def _read_battery(
-        self, bus: MessageBus, path: str, interfaces: Dict
-    ) -> Optional[int]:
-        """Read battery level using the working pattern."""
-        # Prefer the dedicated Battery1 interface if present
-        if "org.bluez.Battery1" in interfaces:
-            node = await bus.introspect("org.bluez", path)
-            batt = bus.get_proxy_object("org.bluez", path, node).get_interface(
-                "org.bluez.Battery1"
-            )
-            pct = await batt.get_percentage()
+        if pct_variant := ifaces.get("org.bluez.Battery1", {}).get("Percentage"):
+            pct = expect_variant(pct_variant, (int, type(None)))
             logger.info(
                 f"Battery level for {self.mac} is {pct}% (from org.bluez.Battery1)"
             )
-            return pct
+        else:
+            pct = None
 
-        # Fallback to BatteryPercentage property on Device1
-        if (
-            battery_pct := interfaces["org.bluez.Device1"].get("BatteryPercentage")
-        ) is not None:
-            return expect_variant(battery_pct, int)  # TODO: test this pah
-        return None
+        return BluetoothData(
+            visible=True,
+            connected=expect_variant(dev["Connected"], bool),
+            name=expect_variant(
+                (dev.get("Name") or dev.get("Alias")), (str, type(None))
+            ),
+            battery_percentage=pct,
+        )
 
 
 class BluetoothHardwareClass(PerPieceUpdateMixin, HardwareClass):
@@ -194,39 +163,7 @@ class BluetoothHardwareClass(PerPieceUpdateMixin, HardwareClass):
     def __init__(self, config: BluetoothConfig):
         super().__init__(config)
         self.config = config
-        self._hardware_pieces = []
-
-        for device_mac in self.config.devices:
-            # Create hardware ID from MAC address
-            hardware_id = device_mac.replace(":", "")
-
-            # Create piece for this device (even if not currently visible)
-            piece = BluetoothPiece(
-                hardware_id,
-                device_mac,
-                battery_sensor=HardwareSensor(
-                    unique_id=f"bluetooth:{hardware_id}:battery_level",
-                    name="Battery Level",
-                    unit="%",
-                    device_class=DeviceClass.BATTERY,
-                    state_class=StateClass.MEASUREMENT,
-                    icon="mdi:battery-bluetooth",
-                ),
-                connected_sensor=HardwareSensor(
-                    unique_id=f"bluetooth:{hardware_id}:connected",
-                    type=SensorType.BINARY_SENSOR,
-                    name="Connected",
-                    device_class="connectivity",  # <--
-                    icon="mdi:bluetooth-connect",
-                ),
-                visible_sensor=HardwareSensor(
-                    unique_id=f"bluetooth:{hardware_id}:visible",
-                    type=SensorType.BINARY_SENSOR,
-                    name="Visible",
-                    icon="mdi:bluetooth-audio",
-                ),
-            )
-            self._hardware_pieces.append(piece)
+        self._hardware_pieces = [BluetoothPiece(mac) for mac in self.config.devices]
 
     async def discover_sensors(self) -> List[HardwareSensor]:
         """Create sensors for all configured Bluetooth devices."""

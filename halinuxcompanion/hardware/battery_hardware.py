@@ -15,8 +15,8 @@ from ..hardware_base import (
 )
 from ..hardware_config import BatteryConfig
 from .battery.provider import BatteryDataProvider
-from .battery.psutil_provider import PsutilBatteryProvider
-from .battery.upower_provider import UPowerBatteryProvider
+from .battery.psutil import PsutilBatteryProvider
+from .battery.upower import UPowerBatteryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +78,7 @@ class BatteryPiece(HardwarePiece):
             (self.energy_full_sensor, data.energy_full),
         ]:
             sensor.state = value
-            sensor.attributes = {
-                "battery_id": self.hardware_id,
-                "battery_name": data.name,
-            }
+            sensor.attributes = {"id": self.hardware_id}
 
         # Update battery level sensor with dynamic icon
         if data.percent is not None:
@@ -130,8 +127,12 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
         self.provider: BatteryDataProvider
         if self.config.implementation == "upower":
             self.provider = UPowerBatteryProvider()
-        else:
+        elif self.config.implementation == "psutil":
             self.provider = PsutilBatteryProvider()
+        else:
+            raise ValueError(
+                f"Unknown battery implementation: {self.config.implementation}"
+            )
 
     async def discover_sensors(self) -> List[HardwareSensor]:
         """Discover and create sensors for batteries."""
@@ -156,81 +157,81 @@ class BatteryHardwareClass(PerPieceUpdateMixin, HardwareClass):
                     charge_level_sensor=_sensor(
                         id="charge_level",
                         name="Battery Level",
-                        unit="%",
+                        unit_of_measurement="%",
                         device_class=DeviceClass.BATTERY,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     charging_state_sensor=_sensor(
                         id="charging_state",
                         name="Battery State",
-                        unit=None,  # enum?
+                        unit_of_measurement=None,  # enum?
                         icon="mdi:battery",
                     ),
                     time_to_empty_sensor=_sensor(
                         id="time_to_empty",
                         name="Time to Empty",
-                        unit="s",
+                        unit_of_measurement="s",
                         device_class=DeviceClass.DURATION,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     time_to_full_sensor=_sensor(
                         id="time_to_full",
                         name="Time to Full",
-                        unit="s",
+                        unit_of_measurement="s",
                         device_class=DeviceClass.DURATION,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     temperature_sensor=_sensor(
                         id="temperature",
                         name="Battery Temperature",
-                        unit="°C",
+                        unit_of_measurement="°C",
                         device_class=DeviceClass.TEMPERATURE,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     voltage_sensor=_sensor(
                         id="voltage",
                         name="Battery Voltage",
-                        unit="V",
+                        unit_of_measurement="V",
                         device_class=DeviceClass.VOLTAGE,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     charge_rate_sensor=_sensor(
                         id="charge_rate",
                         name="Charge Rate",
-                        unit="W",
+                        unit_of_measurement="W",
                         device_class=DeviceClass.POWER,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     discharge_rate_sensor=_sensor(
                         id="discharge_rate",
                         name="Discharge Rate",
-                        unit="W",
+                        unit_of_measurement="W",
                         device_class=DeviceClass.POWER,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     health_sensor=_sensor(
                         id="health",
                         name="Battery Health",
-                        unit="%",
+                        unit_of_measurement="%",
                         state_class=StateClass.MEASUREMENT,
                     ),
                     charge_cycles_sensor=_sensor(
                         id="charge_cycles",
                         name="Charge Cycles",
-                        unit=None,
+                        unit_of_measurement=None,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     energy_sensor=_sensor(
                         id="energy",
                         name="Battery Energy",
-                        unit="Wh",
+                        unit_of_measurement="Wh",
                         device_class=DeviceClass.ENERGY_STORAGE,
                         state_class=StateClass.MEASUREMENT,
                     ),
                     energy_full_sensor=_sensor(
                         id="energy_full",
                         name="Battery Energy Full",
-                        unit="Wh",
+                        unit_of_measurement="Wh",
                         device_class=DeviceClass.ENERGY_STORAGE,
                         state_class=StateClass.MEASUREMENT,
                     ),

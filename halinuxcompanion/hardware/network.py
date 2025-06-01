@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List
 
 import psutil
 
@@ -28,11 +28,11 @@ class NetworkInterfacePiece(HardwarePiece):
         hardware_id: str,
     ):
         super().__init__(hardware_id)
-        self.status_sensor: Optional[HardwareSensor] = None
-        self.tx_bytes_sensor: Optional[HardwareSensor] = None
-        self.rx_bytes_sensor: Optional[HardwareSensor] = None
-        self.ipv4_sensor: Optional[HardwareSensor] = None
-        self.ipv6_sensor: Optional[HardwareSensor] = None
+        self.status_sensor: HardwareSensor | None = None
+        self.tx_bytes_sensor: HardwareSensor | None = None
+        self.rx_bytes_sensor: HardwareSensor | None = None
+        self.ipv4_sensor: HardwareSensor | None = None
+        self.ipv6_sensor: HardwareSensor | None = None
 
     async def update(self) -> None:
         """Update network interface data and push to sensors."""
@@ -111,14 +111,14 @@ class NetworkHardwareClass(PerPieceUpdateMixin, HardwareClass):
                 piece.tx_bytes_sensor = _sensor(
                     id="tx_bytes",
                     name="TX Bytes",
-                    unit="B",
+                    unit_of_measurement="B",
                     device_class=DeviceClass.DATA_SIZE,
                     state_class=StateClass.TOTAL_INCREASING,
                 )
                 piece.rx_bytes_sensor = _sensor(
                     id="rx_bytes",
                     name="RX Bytes",
-                    unit="B",
+                    unit_of_measurement="B",
                     device_class=DeviceClass.DATA_SIZE,
                     state_class=StateClass.TOTAL_INCREASING,
                 )

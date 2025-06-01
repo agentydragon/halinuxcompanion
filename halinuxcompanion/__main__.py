@@ -4,15 +4,15 @@ import logging
 import sys
 import textwrap
 from pathlib import Path
-from typing import Dict, List
 
 import toml
+from tabulate import tabulate
 from xdg_base_dirs import xdg_config_home, xdg_state_home
 
 from .api import API, Server
 from .companion import Companion, CompanionConfig
 from .dbus import Dbus
-from .hardware_base import HardwareSensor
+from .hardware_base import DeviceClass
 from .notifier import Notifier
 from .oauth import OAuthFlow
 from .secret_storage.file import FileSecretStorage, check_file_permissions
@@ -48,30 +48,28 @@ def get_default_config_path() -> Path:
     return xdg_config_home() / "halinuxcompanion" / "config.toml"
 
 
+SENSOR_ICONS = {
+    DeviceClass.TEMPERATURE: "🌡️",
+    DeviceClass.BATTERY: "🔋",
+    DeviceClass.POWER: "⚡",
+    DeviceClass.DURATION: "⏱️",
+    DeviceClass.DATA_SIZE: "💾",
+    DeviceClass.OPENING: "🚪",
+    # DeviceClass.FREQUENCY: "📡",
+    DeviceClass.VOLTAGE: "⚡",
+    DeviceClass.ENERGY_STORAGE: "🔋",
+}
+
+
 def sensor_line(sensor):
     # Format sensor type indicator
-    sensor_icons = {
-        "temperature": "🌡️",
-        "battery": "🔋",
-        "connectivity": "🔗",
-        "power": "⚡",
-        "duration": "⏱️",
-        "data_size": "💾",
-        "opening": "🚪",
-        "motion": "📹",
-        "frequency": "📡",
-        "voltage": "⚡",
-        "energy_storage": "🔋",
-    }
     # Print sensor info with proper indentation based on whether we have multiple pieces
-    text = [
-        f"{sensor_icons.get(sensor.device_class, '📊')} {sensor.name} {sensor.state_str()}"
-    ]
+    text = f"{SENSOR_ICONS.get(sensor.device_class, '📊')} {sensor.name} {sensor.state_str}\n"
     # Print attributes if present
     if sensor.attributes:
-        text.append(
+        text += (
             " ".join(f"{key}={value}" for key, value in sensor.attributes.items())
-        )
+        ) + "\n"
     return text
 
 
@@ -79,55 +77,41 @@ async def print_sensor_states(companion: Companion) -> None:
     """Print current states of all enabled sensors."""
     print("\n=== Sensor States ===\n")
 
-    # sensor => hardware class
-    sensor_info = {}
-    update_futures = []
+    hardware = []
+    for hw_class in HARDWARE_CLASSES.values():
+        hw_config = getattr(companion.hardware, hw_class.config_field)
+        if not hw_config.enabled:
+            continue
+        hardware.append(hw_class(hw_config))  # type: ignore[abstract]
 
     # Discover sensors for each enabled hardware class
-    for hw_name, hw_class in HARDWARE_CLASSES.items():
-        hw_config = getattr(companion.hardware, hw_name, None)
-        if not hw_config or not hw_config.enabled:
-            continue
-        hw_instance = hw_class(hw_config)  # type: ignore[abstract]
-        discovered = await hw_instance.discover_sensors()
-        for sensor in discovered:
-            sensor_info[sensor] = hw_name
-        update_futures.append(hw_instance.update_all_sensors())
+    async def _discover(hw_instance):
+        sensors = await hw_instance.discover_sensors()
+        await hw_instance.update_all_sensors()
+        return hw_instance.config_field, sensors
 
-    # Update all sensors in parallel
-    await asyncio.gather(*update_futures)
-
-    # Group sensors by hardware class and piece for printing
-    hw_sensors: Dict[str, Dict[str, List[HardwareSensor]]] = {}
-    for sensor, hw_name in sensor_info.items():
-        if hw_name not in hw_sensors:
-            hw_sensors[hw_name] = {}
-
-        # Group by hardware piece ID
-        hw_sensors[hw_name].setdefault(sensor.hardware_id, []).append(sensor)
+    hw_sensors = await asyncio.gather(*[_discover(hw) for hw in hardware])
 
     # Print results
-    for hw_name, pieces in sorted(hw_sensors.items()):
-        print(f"\n  {hw_name.upper()}")
-        print(f"  {'=' * len(hw_name)}")
-
-        if not pieces:
-            print("    No sensors discovered")
+    for hw_name, sensors in sorted(hw_sensors):
+        if not sensors:
+            print(f"{hw_name}: No sensors discovered")
             continue
 
-        # Sort pieces by ID for consistent output
-        for piece_id, sensors in sorted(pieces.items()):
-            # Print piece header if there are multiple pieces
-            if len(pieces) > 1:
-                print(f"\n    [{piece_id}]")
+        print(f"{hw_name}: {len(sensors)} sensors")
+        items = []
+        for sensor in sorted(sensors, key=lambda s: s.unique_id):
+            items.append(
+                {
+                    "sensor": f"{SENSOR_ICONS.get(sensor.device_class, '📊')} {sensor.name}",
+                    "state": sensor.state_str,
+                    **sensor.attributes,
+                }
+            )
 
-            for sensor in sensors:
-                text = sensor_line(sensor)
-                print(
-                    textwrap.indent(
-                        "\n".join(text), "    " if len(pieces) > 1 else "  "
-                    )
-                )
+        print(textwrap.indent(tabulate(items, headers="keys"), "  "))
+        # for sensor in sorted(sensors, key=lambda s: s.unique_id):
+        #    print(textwrap.indent(sensor_line(sensor), "  "), end="")
 
 
 async def cleanup_sensors(companion: Companion) -> None:

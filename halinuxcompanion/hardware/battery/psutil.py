@@ -1,8 +1,6 @@
 """Battery data provider using psutil."""
 
-import asyncio
 import logging
-from typing import List, Optional
 
 import psutil
 
@@ -17,24 +15,17 @@ PSUTIL_BATTERY_ID = "main"
 class PsutilBatteryProvider(BatteryDataProvider):
     """Battery data provider using psutil."""
 
-    async def discover_batteries(self) -> List[str]:
+    async def discover_batteries(self) -> list[str]:
         """Discover available batteries using psutil."""
-        battery = await asyncio.get_event_loop().run_in_executor(
-            None, psutil.sensors_battery
-        )
-        if battery:
+        if await psutil.sensors_battery():
             return [PSUTIL_BATTERY_ID]
         return []
 
-    async def get_battery_data(self, battery_id: str) -> Optional[BatteryData]:
+    async def get_battery_data(self, battery_id: str) -> BatteryData | None:
         """Get battery data using psutil."""
-        if battery_id != PSUTIL_BATTERY_ID:
-            return None
+        assert battery_id == PSUTIL_BATTERY_ID
 
-        battery = await asyncio.get_event_loop().run_in_executor(
-            None, psutil.sensors_battery
-        )
-        if not battery:
+        if not (battery := await psutil.sensors_battery()):
             return None
 
         # Determine battery state
@@ -47,7 +38,6 @@ class PsutilBatteryProvider(BatteryDataProvider):
 
         return BatteryData(
             battery_id=battery_id,
-            name="Battery",
             percent=battery.percent,
             plugged=battery.power_plugged,
             state=state,

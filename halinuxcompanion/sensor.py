@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Type
 
 from aiohttp import ClientError
 
@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 SC_REGISTER_SENSOR = 301
 
 # Map of hardware config fields to hardware classes
-HARDWARE_CLASSES = {
-    hw_class.config_field: hw_class  # type: ignore[attr-defined]
+HARDWARE_CLASSES: dict[str, Type[HardwareClass]] = {
+    hw_class.config_field: hw_class  # type: ignore[attr-defined, type-abstract]
     for hw_class in [
         BatteryHardwareClass,
         BluetoothHardwareClass,
@@ -157,7 +157,7 @@ class SensorManager:
             "state": sensor.state,
             "type": sensor.type,
             "unique_id": sensor.unique_id,
-            "unit_of_measurement": sensor.unit,
+            "unit_of_measurement": sensor.unit_of_measurement,
             "state_class": sensor.state_class,
             "entity_category": None,  # sensor.entity_category,
         }

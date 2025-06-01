@@ -93,7 +93,6 @@ class UPowerBatteryProvider(BatteryDataProvider):
         # Extract battery data
         return BatteryData(
             battery_id=battery_id,
-            name=f"Battery {battery_id}",
             percent=get_value("Percentage", 0),
             plugged=get_value("PowerSupply", False),
             state=state,
@@ -110,9 +109,5 @@ class UPowerBatteryProvider(BatteryDataProvider):
             else None,
             voltage=get_value("Voltage"),
             temperature=(temp_kelvin - 273.15 if temp_kelvin else None),
-            technology=get_value("Technology"),
-            model=get_value("Model"),
-            vendor=get_value("Vendor"),
-            serial=get_value("Serial"),
-            warning_level=get_value("WarningLevel"),
+            # NOTE: not reporting: Technology, Model, Vendor, Serial, WarningLevel
         )
