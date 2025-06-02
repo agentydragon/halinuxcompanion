@@ -17,7 +17,7 @@ class PsutilBatteryProvider(BatteryDataProvider):
 
     async def discover_batteries(self) -> list[str]:
         """Discover available batteries using psutil."""
-        if await psutil.sensors_battery():
+        if psutil.sensors_battery():
             return [PSUTIL_BATTERY_ID]
         return []
 
@@ -25,7 +25,7 @@ class PsutilBatteryProvider(BatteryDataProvider):
         """Get battery data using psutil."""
         assert battery_id == PSUTIL_BATTERY_ID
 
-        if not (battery := await psutil.sensors_battery()):
+        if not (battery := psutil.sensors_battery()):
             return None
 
         # Determine battery state

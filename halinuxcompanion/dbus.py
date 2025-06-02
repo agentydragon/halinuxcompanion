@@ -108,13 +108,11 @@ class Dbus:
             return None
 
     async def get_interface(self, name: str) -> ProxyInterface | None:
-        iface = self.interfaces.get(name)
-        if iface is not None:
+        if iface := self.interfaces.get(name):
             return iface
-        interface = await self._get_interface(INTERFACES[name])
-        if interface is not None:
+        if interface := await self._get_interface(INTERFACES[name]):
             self.interfaces[name] = interface
-        return self.interfaces[name]
+        return interface
 
     async def register_signal(self, signal_alias: str, callback: Callable) -> None:
         """Register a signal handler"""
@@ -170,7 +168,9 @@ async def register_sensor_dbus_handlers(sensor: Any, dbus_instance: "Dbus") -> N
     """
     # Find all methods with the _dbus_signal_alias attribute
     for attr_name in dir(sensor):
-        logger.info(f"Checking {sensor.__class__.__name__}.{attr_name} for D-Bus signal handler")
+        # Skip special attributes that might not be accessible
+        if attr_name.startswith("__") and attr_name.endswith("__"):
+            continue
         try:
             attr = getattr(sensor, attr_name)
         except AttributeError:

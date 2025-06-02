@@ -84,7 +84,7 @@ class LibSecretStorage(SecretStorage):
             secret = self._lookup_password("oauth")
             if not secret:
                 return None
-            return OAuthTokens.model_validate(json.loads(secret))  # type: ignore[no-any-return]
+            return OAuthTokens.model_validate(json.loads(secret))
         except (json.JSONDecodeError, ValueError):
             logger.exception("Error loading OAuth tokens from libsecret")
             return None

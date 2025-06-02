@@ -34,6 +34,9 @@ dependencies = [
     "greenlet>=3.1.1",
     "toml>=0.10.2",
     "pint>=0.23",
+    "jinja2>=3.1.2",
+    "xdg-base-dirs>=6.0.1",
+    "tabulate>=0.9.0",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +47,8 @@ dev = [
     "coverage>=7.3.2",
     "tox>=4.11.3",
     "black",
+    "mypy",
+    "types-tabulate",
 ]
 
 [project.scripts]
@@ -185,9 +190,15 @@ warn_no_return = true
 warn_unreachable = true
 strict_equality = true
 ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
 exclude = [
     "scratch/",
 ]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [tool.tox]
 legacy_tox_ini = """

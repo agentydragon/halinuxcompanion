@@ -26,9 +26,11 @@ def temp_dir():
 
 
 @pytest.fixture
-def storage(temp_dir):
+def storage(temp_dir, monkeypatch):
     """Create a FileSecretStorage instance with a temporary directory."""
-    return FileSecretStorage(temp_dir)
+    # Mock get_state_dir to return our temp directory
+    monkeypatch.setattr("halinuxcompanion.secret_storage.file.get_state_dir", lambda: temp_dir)
+    return FileSecretStorage()
 
 
 @pytest.fixture

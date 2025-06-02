@@ -1,4 +1,4 @@
-"""Bluetooth hardware class implementation."""
+"""Bluetooth module implementation."""
 
 from __future__ import annotations
 
@@ -9,16 +9,8 @@ from typing import TypeVar, overload
 from dbus_next import BusType, Variant
 from dbus_next.aio import MessageBus
 
-from ..hardware_base import (
-    DeviceClass,
-    HardwareClass,
-    HardwarePiece,
-    HardwareSensor,
-    PerPieceUpdateMixin,
-    SensorType,
-    StateClass,
-)
-from ..hardware_config import BluetoothConfig
+from ...module_base import DeviceClass, Module, ModulePiece, PerPieceUpdateMixin, Sensor, SensorType, StateClass
+from ...module_config import BluetoothConfig
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +43,7 @@ def expect_variant(v: Variant, py_type: type[T] | tuple[type[T], ...]) -> T:
     return value  # type: ignore[no-any-return]
 
 
-class BluetoothPiece(HardwarePiece):
+class BluetoothPiece(ModulePiece):
     """Represents a Bluetooth device."""
 
     def __init__(self, mac: str):
@@ -60,7 +52,7 @@ class BluetoothPiece(HardwarePiece):
 
         def _sensor(sensor_id, **kwargs):
             # name will be set later
-            return HardwareSensor(unique_id=f"bluetooth:{mac}:{sensor_id}", **kwargs)
+            return Sensor(unique_id=f"bluetooth:{mac}:{sensor_id}", **kwargs)
 
         self.battery_sensor = _sensor(
             "battery_level",
@@ -74,11 +66,13 @@ class BluetoothPiece(HardwarePiece):
             type=SensorType.BINARY_SENSOR,
             device_class=DeviceClass.CONNECTIVITY,
             icon="mdi:bluetooth-connect",
+            state_class=None,  # Binary sensors don't have state_class
         )
         self.visible_sensor = _sensor(
             "visible",
             type=SensorType.BINARY_SENSOR,
             icon="mdi:bluetooth-audio",
+            state_class=None,  # Binary sensors don't have state_class
         )
 
         self.name: str | None = None  # last known name
@@ -93,9 +87,9 @@ class BluetoothPiece(HardwarePiece):
             logger.debug(f"Name of {self.mac} lost, using last seen name '{self.name}'")
 
         for sensor, subname, value in [
-            (self.visible_sensor, "Battery", data.visible),
+            (self.visible_sensor, "Visible", data.visible),
             (self.connected_sensor, "Connected", data.connected),
-            (self.battery_sensor, "Visible", data.battery_percentage),
+            (self.battery_sensor, "Battery", data.battery_percentage),
         ]:
             sensor.attributes = {"mac": self.mac, "name": self.name}
             sensor.name = f"{self.name or self.mac} {subname}"
@@ -106,7 +100,7 @@ class BluetoothPiece(HardwarePiece):
         data = await self._fetch_sensor_data()
         self._apply_update(data)
 
-    def get_sensors(self) -> list[HardwareSensor]:
+    def get_sensors(self) -> list[Sensor]:
         return [self.battery_sensor, self.connected_sensor, self.visible_sensor]
 
     async def _fetch_sensor_data(self) -> BluetoothData:
@@ -147,23 +141,21 @@ class BluetoothPiece(HardwarePiece):
         )
 
 
-class BluetoothHardwareClass(PerPieceUpdateMixin, HardwareClass):
-    """Bluetooth hardware class."""
-
-    config_field = "bluetooth"
+class BluetoothModule(PerPieceUpdateMixin, Module):
+    """Bluetooth module."""
 
     def __init__(self, config: BluetoothConfig):
         super().__init__(config)
         self.config = config
-        self._hardware_pieces = [BluetoothPiece(mac) for mac in self.config.devices]
+        self._module_pieces = [BluetoothPiece(mac) for mac in self.config.devices]
 
-    async def discover_sensors(self) -> list[HardwareSensor]:
+    async def discover_sensors(self) -> list[Sensor]:
         """Create sensors for all configured Bluetooth devices."""
         if not self.config.enabled:
             return []
 
         # Create pieces for ALL configured devices, not just visible ones
         all_sensors = []
-        for piece in self._hardware_pieces:
+        for piece in self._module_pieces:
             all_sensors.extend(piece.get_sensors())
         return all_sensors

@@ -20,7 +20,7 @@ halinuxcompanion supports two authentication methods:
 
 #### 2. Long-Lived Access Token
 - Add `ha_token` to your config file
-- Get token from: [Home Assistant Profile](https://www.home-assistant.io/docs/authentication/#your-account-profile)
+- Get token from: Home Assistant Profile (see `references/developers.home-assistant/docs/auth_api.md` for long-lived token generation)
 - Note: Config files containing tokens must have restricted permissions (600)
 
 ### Secret Storage
@@ -36,10 +36,6 @@ Authentication tokens can be stored using different backends:
    - Tokens stored in `~/.local/state/halinuxcompanion/`
    - Files have restricted permissions (600)
    - Set `storage_backend: "file"` in config
-
-3. **Auto** - Default
-   - Tries libsecret first, falls back to file storage
-   - Set `storage_backend: "auto"` in config (or omit)
 
 After initial registration, most operations (sensor updates) use webhook authentication. Registration data is saved to `~/.local/state/halinuxcompanion/registration.json`.
 
@@ -75,7 +71,7 @@ After initial registration, most operations (sensor updates) use webhook authent
    ```
 
    **Option B: Long-lived token**
-   - [Get a token from your Home Assistant user profile](https://www.home-assistant.io/docs/authentication/#your-account-profile)
+   - Get a token from your Home Assistant user profile (see `references/developers.home-assistant/docs/auth_api.md` for long-lived token generation)
    - Add `"ha_token": "your-token-here"` to your config file
 
 1. Run the application:
@@ -131,16 +127,17 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
 
 ### Command Line Options
 
+- `oauth`: Run OAuth authentication flow and exit
 - `--config <path>`: Specify custom config file location (default: `~/.config/halinuxcompanion/config.toml`)
 - `--loglevel <level>`: Set logging level (DEBUG, INFO, WARNING, ERROR)
-- `--oauth`: Run OAuth authentication flow and exit
-- `--sensor-state`: Print current sensor states and exit (useful for debugging)
 - `--version`: Show version information
 
 ## Technical
 
-- [Home Assistant Native App Integration](https://developers.home-assistant.io/docs/api/native-app-integration)
-- [Home Assistant REST API](https://developers.home-assistant.io/docs/api/rest)
+**Documentation Note**: This project includes a `references/` folder containing local copies of relevant Home Assistant documentation for offline reference. See `references/fetch.sh` to update these docs.
+
+- Native App Integration (see `references/developers.home-assistant/docs/api/native-app-integration.md`)
+- REST API (see `references/developers.home-assistant/docs/api/rest.md`)
 - Asynchronous (because why not :smile:)
   - HTTP Server ([aiohttp](https://docs.aiohttp.org/en/stable/)): Listen to POST notification service call from Home Assistant
   - Client ([aiohttp](https://docs.aiohttp.org/en/stable/)): POST to Home Assistant api, sensors, events, etc
@@ -148,16 +145,17 @@ Now in your Home Assistant you will see a new device in the **"mobile_app"** int
 
 ## To-do
 
-- [ ] [Implement encryption](https://developers.home-assistant.io/docs/api/native-app-integration/sending-data)
+- [ ] Implement encryption (see `references/developers.home-assistant/docs/api/native-app-integration/sending-data.md`)
 - [ ] Move sensors to MQTT
-    The reasoning for the change is the limitations of the API, naturally is expected that desktop and laptops would go offline and I would like for the sensors to reflect this new state. But if for some reason the application is unable to send this new state to Home Assistant the values of the sensors would be stuck. But if the app uses MQTT it can set will topics for the sensors to be updated when the client can't communicate with the server.
+      The reasoning for the change is the limitations of the API, naturally is expected that desktop and laptops would go offline and I would like
+      for the sensors to reflect this new state. But if for some reason the application is unable to send this new state to Home Assistant the values of the sensors would be stuck. But if the app uses MQTT it can set will topics for the sensors to be updated when the client can't communicate with the server.
 - [ ] One day make it work with remote and local instance, for laptops roaming networks
 - [x] Status sensors that listens to sleep, wakeup, shutdown, power_on
 - [ ] Add more sensors
 - [ ] Finish notifications functionality
     - [x] Add notification commands
-    - [x] [Notifications Clearing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#clearing)
-    - [ ] [Notification Icon](https://companion.home-assistant.io/docs/notifications/notifications-basic/#notification-icon)
+    - [x] Notifications Clearing (see `references/companion.home-assistant/docs/notifications/notifications-basic.md`)
+    - [ ] Notification Icon (see `references/companion.home-assistant/docs/notifications/notifications-basic.md`)
 
 ## Features
 
@@ -301,14 +299,14 @@ For each whitelisted Bluetooth device, the following sensors are created:
 
 ### Notifications
 
-- [Actionable Notifications](https://companion.home-assistant.io/docs/notifications/actionable-notifications#building-actionable-notifications) (Triggers event in Home Assistant)
-  - [Local action handler using URI](https://companion.home-assistant.io/docs/notifications/actionable-notifications#uri-values): only relative style `/lovelace/myview` and `http(s)` uri supported so far.
-- [Notification cleared/dismissed](https://companion.home-assistant.io/docs/notifications/notification-cleared/) (Triggers event in Home Assistant)
-- [Timeout](https://companion.home-assistant.io/docs/notifications/notifications-basic#notification-timeout)
-- [Commands](https://companion.home-assistant.io/docs/notifications/notification-commands/)
-- [Replacing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#replacing)
-- [Clearing](https://companion.home-assistant.io/docs/notifications/notifications-basic/#clearing)
-- [Icon](https://companion.home-assistant.io/docs/notifications/notifications-basic/#notification-icon) **TODO**
+- Actionable Notifications (see `references/companion.home-assistant/docs/notifications/actionable-notifications.md`) - Triggers event in Home Assistant
+  - Local action handler using URI: only relative style `/lovelace/myview` and `http(s)` uri supported so far.
+- Notification cleared/dismissed (see `references/companion.home-assistant/docs/notifications/notification-cleared.md`) - Triggers event in Home Assistant
+- Timeout (see `references/companion.home-assistant/docs/notifications/notifications-basic.md`)
+- Commands (see `references/companion.home-assistant/docs/notifications/notification-commands.md`)
+- Replacing (see `references/companion.home-assistant/docs/notifications/notifications-basic.md`)
+- Clearing (see `references/companion.home-assistant/docs/notifications/notifications-basic.md`)
+- Icon (see `references/companion.home-assistant/docs/notifications/notifications-basic.md`) **TODO**
 
 ### Default Commands (example config)
   - Suspend

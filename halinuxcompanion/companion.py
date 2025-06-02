@@ -3,55 +3,53 @@ import json
 import logging
 import platform
 import secrets
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiohttp
 from pydantic import BaseModel, ConfigDict, Field
-from xdg_base_dirs import xdg_state_home
 
 from .constants import DEFAULT_NOTIFIER_PORT, SC_INTEGRATION_DELETED, SC_OK
-from .hardware_config import HardwareConfig
 from .models import RegistrationData
+from .module_config import ModulesConfig
+from .paths import get_state_file_path
 from .secret_storage import SecretStorageBackend
 
 if TYPE_CHECKING:
     from halinuxcompanion.api import API
 
 
-def get_state_dir() -> Path:
-    """Get the state directory path using XDG_STATE_HOME."""
-    return Path(xdg_state_home() / "halinuxcompanion")
-
-
 class CommandConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     command: list[str]
 
 
 class NotificationServiceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool
     url_program: str
     commands: dict[str, CommandConfig] = Field(default_factory=dict)
 
 
-class ServicesConfig(BaseModel):
-    notifications: NotificationServiceConfig
-
-
 class CompanionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ha_url: str
     ha_token: str | None = None
     device_id: str
     device_name: str | None
     manufacturer: str | None
     model: str | None
-    # HTTP listener configuration for both OAuth and notifications
-    http_port: int = Field(default=DEFAULT_NOTIFIER_PORT, alias="notifier_listen_port")
-    http_host: str = Field(alias="notifier_listen_address")
+    # Local HTTP listener configuration for OAuth callbacks and push notifications
+    local_http_port: int = Field(default=DEFAULT_NOTIFIER_PORT)
+    local_http_host: str
     refresh_interval: int = 15
-    hardware: HardwareConfig
-    services: ServicesConfig
+    hardware: ModulesConfig
+    notifications: NotificationServiceConfig
     storage_backend: SecretStorageBackend = Field(
         default=SecretStorageBackend.LIBSECRET,
         description="Storage backend for secrets",
@@ -78,14 +76,9 @@ class State:
     including push tokens and registration information.
     """
 
-    def __init__(self, state_dir: Path | None = None):
-        """Initialize state manager.
-
-        Args:
-            state_dir: Directory to store state file. Defaults to XDG state home.
-        """
-        self._state_dir = state_dir or get_state_dir()
-        self._state_path = self._state_dir / "state.json"
+    def __init__(self):
+        """Initialize state manager."""
+        self._state_path = get_state_file_path()
         self._data = self._load()
 
     @property
@@ -123,7 +116,7 @@ class State:
         try:
             with open(self._state_path) as f:
                 data = json.load(f)
-                return StateData.model_validate(data)  # type: ignore[no-any-return]
+                return StateData.model_validate(data)
         except (json.JSONDecodeError, ValueError):
             logger.exception("Error loading state file, starting fresh")
             return StateData()
@@ -135,6 +128,7 @@ class State:
         logger.debug(f"State saved to {self._state_path}")
 
 
+@dataclass
 class Companion:
     """Class encolsing a companion instance
     https://developers.home-assistant.io/docs/api/native-app-integration/setup
@@ -142,35 +136,25 @@ class Companion:
 
     # TODO: This class is just a huge pile of things
     # TODO: Get the default values from something that helps sets releases.
-    app_name: str = "Linux Companion"
-    app_version: str = "0.0.1"
     config: CompanionConfig
+    app_name: str = "Linux Companion"
+    state: State = field(default_factory=State)
     # TODO: Encryption requires https://github.com/jedisct1/libsodium
 
     @property
     def app_id(self) -> str:
         """Get the unique application ID."""
-        return f"halinuxcompanion-{self.app_version}"
-
-    state: State
-
-    @property
-    def hardware(self) -> HardwareConfig:
-        return self.config.hardware
+        return f"halinuxcompanion-{self.companion_version}"
 
     @property
     def http_host(self) -> str:
         """Get the host/IP address for the local HTTP listener."""
-        return self.config.http_host
+        return self.config.local_http_host
 
     @property
     def http_port(self) -> int:
         """Get the port for the local HTTP listener (notifications and OAuth)."""
-        return self.config.http_port
-
-    @property
-    def ha_token(self) -> str | None:
-        return self.config.ha_token
+        return self.config.local_http_port
 
     @property
     def refresh_interval(self) -> int:
@@ -189,20 +173,14 @@ class Companion:
         return self.config.device_id or platform.node()
 
     @property
-    def notifier(self) -> bool:
-        """Check if the notifier service is enabled."""
-        # Push token will be generated/loaded in load_or_register
-        return self.config.services.notifications.enabled
-
-    def __init__(self, config: CompanionConfig):
-        # Load only allowed values
-        self.config = config
-        self.state = State()
-
-    @property
     def device_name(self) -> str:
         """Get the name of the device."""
         return self.config.device_name or platform.node()
+
+    @property
+    def companion_version(self) -> str:
+        """Get the companion version."""
+        return "0.1.0"
 
     async def register(self, api: "API"):
         """Register the companion with Home Assistant with retry logic.
@@ -212,17 +190,16 @@ class Companion:
         :return: registration_data if successful
         :raises: Exception if registration fails after all retries
         """
-        app_data = {}
-        if push_token := self.load_or_generate_push_token():
-            app_data = {
-                "push_token": push_token,
-                "push_url": f"http://{self.http_host}:{self.http_port}/notify",
-            }
+        push_token = self.load_or_generate_push_token()
+        app_data = {
+            "push_token": push_token,
+            "push_url": f"http://{self.http_host}:{self.http_port}/notify",
+        }
         payload = {
             "device_id": self.device_id,
             "app_id": self.app_id,
             "app_name": self.app_name,
-            "app_version": self.app_version,
+            "app_version": self.companion_version,
             "device_name": self.device_name,
             "manufacturer": self.config.manufacturer or platform.system(),
             "model": self.config.model or "Computer",
@@ -231,8 +208,6 @@ class Companion:
             "supports_encryption": False,
             "app_data": app_data,
         }
-
-        logger.info(f"Registering companion device with payload: {payload=}")
 
         try:
             res = await api.post("/api/mobile_app/registrations", json=payload)
@@ -251,13 +226,9 @@ class Companion:
         return registration_data
 
     def load_or_generate_push_token(self) -> str:
-        if self.state.push_token:
-            logger.info("Loaded existing push token")
-            return self.state.push_token
-
-        logger.info("Generating new push token")
-        self.state.push_token = secrets.token_urlsafe(32)
-        # State is automatically saved when properties are set
+        if not self.state.push_token:
+            logger.info("Generating new push token")
+            self.state.push_token = secrets.token_urlsafe(32)
         return self.state.push_token
 
     async def load_or_register(self, api: "API") -> RegistrationData:
@@ -271,7 +242,7 @@ class Companion:
         logger.info("Checking if device is already registered")
         if self.state.registration_data:
             api.registration = self.state.registration_data
-            res = await api.webhook_post({"type": "get_config"})
+            res = await api.webhook_post({"type": "get_config", "data": {}})
             if res.status == SC_OK:
                 return self.state.registration_data
             if res.status != SC_INTEGRATION_DELETED:

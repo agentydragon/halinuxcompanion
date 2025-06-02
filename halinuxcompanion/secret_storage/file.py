@@ -7,6 +7,7 @@ import stat
 from pathlib import Path
 
 from ..oauth import OAuthTokens
+from ..paths import get_state_dir
 from .base import SecretStorage
 
 logger = logging.getLogger(__name__)
@@ -55,8 +56,8 @@ def check_file_permissions(path: Path) -> None:
 class FileSecretStorage(SecretStorage):
     """File-based secret storage with permission checks."""
 
-    def __init__(self, state_dir: Path):
-        self.state_dir = state_dir
+    def __init__(self, state_dir: Path | None = None) -> None:
+        self.state_dir = state_dir or get_state_dir()
 
     @property
     def oauth_token_file(self) -> Path:
@@ -131,7 +132,7 @@ class FileSecretStorage(SecretStorage):
         if not (content := self._read_secure_file(self.oauth_token_file)):
             return None
         try:
-            return OAuthTokens.model_validate(json.loads(content))  # type: ignore[no-any-return]
+            return OAuthTokens.model_validate(json.loads(content))
         except ValueError:
             logger.exception("Error parsing OAuth tokens")
             return None

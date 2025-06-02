@@ -1,4 +1,4 @@
-"""Uptime hardware class implementation."""
+"""Uptime module implementation."""
 
 from __future__ import annotations
 
@@ -7,27 +7,25 @@ import time
 
 import psutil
 
-from ..hardware_base import (
+from ...module_base import (
     DeviceClass,
-    HardwareClass,
-    HardwareSensor,
+    Module,
     PerPieceUpdateMixin,
+    Sensor,
     StateClass,
 )
-from ..hardware_config import UptimeConfig
+from ...module_config import UptimeConfig
 
 logger = logging.getLogger(__name__)
 
 
-class UptimeHardwareClass(PerPieceUpdateMixin, HardwareClass):
-    """Uptime hardware class."""
-
-    config_field = "uptime"
+class UptimeModule(PerPieceUpdateMixin, Module):
+    """Uptime module."""
 
     def __init__(self, config: UptimeConfig):
         super().__init__(config)
         self.config: UptimeConfig = config
-        self.sensor = HardwareSensor(
+        self.sensor = Sensor(
             unique_id="uptime",
             name="Uptime",
             unit_of_measurement="s",
@@ -36,8 +34,11 @@ class UptimeHardwareClass(PerPieceUpdateMixin, HardwareClass):
             icon="mdi:clock-outline",
         )
 
-    async def discover_sensors(self) -> list[HardwareSensor]:
+    async def discover_sensors(self) -> list[Sensor]:
         return [self.sensor]
 
     async def update_all_sensors(self) -> None:
-        self.sensor.state = int(time.time() - psutil.boot_time())
+        try:
+            self.sensor.set_ok(time.time() - psutil.boot_time())
+        except (OSError, RuntimeError) as e:
+            self.sensor.set_error(e, "Failed to read boot time")

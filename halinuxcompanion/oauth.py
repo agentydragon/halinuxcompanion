@@ -1,4 +1,3 @@
-import asyncio
 import ipaddress
 import logging
 import secrets
@@ -14,6 +13,7 @@ from pydantic import BaseModel
 from .constants import OAUTH_CALLBACK_PORT, SC_OK
 
 if TYPE_CHECKING:
+    from .api import Server
     from .secret_storage import SecretStorage
 
 
@@ -83,14 +83,11 @@ class OAuthFlow:
     redirect_port: int = OAUTH_CALLBACK_PORT  # Can be overridden
     redirect_host: str = "localhost"
     state: str = field(init=False)  # Always set, generated in __post_init__
-    _auth_code_future: asyncio.Future[str] = field(init=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.ha_url = self.ha_url.rstrip("/")
         # Generate state token once at initialization
         self.state = secrets.token_urlsafe(32)
-        # Create future for auth code
-        self._auth_code_future = asyncio.get_event_loop().create_future()
 
     @property
     def redirect_uri(self) -> str:
@@ -124,7 +121,7 @@ class OAuthFlow:
             )
         )
 
-    async def _request_token(self, session: ClientSession, operation: str, data: dict):
+    async def _request_token(self, session: ClientSession, operation: str, data: dict) -> dict[str, Any]:
         """Common method to request tokens from Home Assistant."""
         async with session.post(
             f"{self.ha_url}/auth/token",
@@ -139,20 +136,20 @@ class OAuthFlow:
         token_data["expires_at"] = (expires_at := datetime.now(timezone.utc) + expires_delta)
 
         logger.info(f"Token {operation} successful, expires at {expires_at.isoformat()} ({expires_delta} from now)")
-        return token_data
+        return dict(token_data)
 
     async def exchange_code_for_token(self, session: ClientSession, auth_code: str) -> OAuthTokens:
         """Exchange the authorization code for access and refresh tokens."""
-        return OAuthTokens.model_validate(  # type: ignore[no-any-return]
-            await self._request_token(
-                session,
-                "exchange",
-                {
-                    "grant_type": "authorization_code",
-                    "code": auth_code,
-                },
-            )
+        token_data = await self._request_token(
+            session,
+            "exchange",
+            {
+                "grant_type": "authorization_code",
+                "code": auth_code,
+            },
         )
+        tokens: OAuthTokens = OAuthTokens.model_validate(token_data)
+        return tokens
 
     async def refresh_access_token(self, session: ClientSession, refresh_token: str) -> OAuthTokens:
         """Refresh the access token using the refresh token."""
@@ -167,12 +164,13 @@ class OAuthFlow:
         # Refresh response does not include refresh_token, so we need to keep it
         return OAuthTokens(refresh_token=refresh_token, **refreshed)
 
-    async def run(self, storage: "SecretStorage", server: Any) -> None:
+    async def run(self, storage: "SecretStorage", server: "Server", session: ClientSession) -> None:
         """Run the complete OAuth authentication flow using the unified server.
 
         Args:
             storage: Secret storage backend to save tokens
             server: The unified server instance
+            session: aiohttp session for HTTP requests
         """
         print(f"Starting OAuth authentication flow with {self.ha_url}")
         # Check if using IP address for OAuth
@@ -187,42 +185,20 @@ class OAuthFlow:
                 "See: https://www.home-assistant.io/docs/authentication/#error-invalid-client-id-or-redirect-url"
             )
 
-        # Create future to receive the OAuth callback
-        request_future = asyncio.get_event_loop().create_future()
-        server.set_oauth_future(request_future)
+        # Open browser
+        print("\nOpening browser for authentication...")
+        print(f"If browser doesn't open, please visit: {self.authorization_url}\n")
+        webbrowser.open(self.authorization_url)
 
-        try:
-            print("\nOpening browser for authentication...")
-            print(f"If browser doesn't open, please visit: {self.authorization_url}\n")
-            webbrowser.open(self.authorization_url)
+        # Use the server's integrated OAuth flow
+        result = await server.run_oauth_flow(state=self.state)
 
-            # Wait for OAuth callback request
-            request = await request_future
-
-            # Process the callback
-            code = request.query.get("code")
-            state = request.query.get("state")
-
-            if not code:
-                error_msg = request.query.get("error", "Unknown error")
-                if error_desc := request.query.get("error_description", ""):
-                    error_msg += f" - {error_desc}"
-                raise AuthenticationError(error_msg)
-
-            if state != self.state:
-                raise AuthenticationError(f"State mismatch in OAuth callback. Expected: {self.state}, Got: {state}")
-
-            auth_code = code
-
-        finally:
-            # Clear the OAuth future
-            server.set_oauth_future(None)
+        # Extract the authorization code
+        auth_code = result["code"]
 
         # Exchange code for tokens
-        async with ClientSession() as session:
-            # Save tokens using the storage backend
-            tokens = await self.exchange_code_for_token(session, auth_code)
-            storage.save_oauth_tokens(tokens)
+        tokens = await self.exchange_code_for_token(session, auth_code)
+        storage.save_oauth_tokens(tokens)
 
         print("\nAuthentication successful! Tokens saved.")
 
@@ -257,9 +233,7 @@ async def ensure_valid_oauth_token(
         new_tokens = await OAuthFlow(ha_url).refresh_access_token(session, oauth_tokens.refresh_token)
     except AuthenticationError:
         raise AuthenticationError(
-            "OAuth token refresh failed.\n"
-            "Your authentication has expired. Please re-authenticate:\n"
-            "Run: halinuxcompanion --oauth"
+            "OAuth token refresh failed - authentication expired. Please re-authenticate:\n    halinuxcompanion oauth"
         )
     storage.save_oauth_tokens(new_tokens)
     logger.info("OAuth token refreshed successfully")

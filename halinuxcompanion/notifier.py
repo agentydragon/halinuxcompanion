@@ -3,22 +3,18 @@ import json
 import logging
 import re
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from importlib.resources import files
-from typing import Any
 
 from aiohttp import ClientError
-from aiohttp.web import Response, json_response
+from aiohttp.web import Request, Response, json_response
 from dbus_next.aio import ProxyInterface
 from pydantic import BaseModel, ConfigDict
 
 from halinuxcompanion.api import API, Server
-from halinuxcompanion.companion import CommandConfig, Companion
+from halinuxcompanion.companion import CommandConfig
 from halinuxcompanion.dbus import Dbus
-from halinuxcompanion.dbus_models import (
-    DBusNotification,
-    NotificationHints,
-    UrgencyLevel,
-)
+from halinuxcompanion.dbus_models import DBusNotification, NotificationHints, UrgencyLevel
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +36,6 @@ EVENTS_ENDPOINT = {
     "action": "/api/events/mobile_app_notification_action",
 }
 
-EMPTY_DICT: dict[str, Any] = {}
 COMMAND_PREFIX = "command_"
 
 
@@ -56,13 +51,6 @@ def _error_response(error: str, message: str, status: int) -> Response:
     return json_response(
         {"error": error, "errorMessage": message},
         status=status,
-    )
-
-
-def _ok_response() -> Response:
-    return json_response(
-        {"success": True, "message": "Notification queued"},
-        status=201,
     )
 
 
@@ -93,6 +81,7 @@ async def run_subprocess_with_logging(command: list[str], description: str) -> N
         logger.debug(f"Command {description} completed successfully")
 
 
+@dataclass
 class Notifier:
     """Class that handles the lifetime of notifications
     1. It receives a notification by registering a handler to the web server spawned by the application.
@@ -104,31 +93,32 @@ class Notifier:
     7. Some action events perform a local action like opening a url.
     """
 
-    # Only keeping the last 20 notifications and popping everytime a new one is added
-    history: OrderedDict[int, dict] = OrderedDict((x, EMPTY_DICT) for x in range(-1, -21, -1))
-    tagtoid: dict[str, int] = {}  # Lookup id from tag
-    interface: ProxyInterface
+    # Required dependencies
     api: API
     push_token: str
     url_program: str
     commands: dict[str, CommandConfig]
     ha_url: str
+    server: Server
 
-    async def init(self, dbus: Dbus, api: API, webserverver: Server, companion: Companion) -> None:
-        """Function to initialize the notifier.
-        1. Gets the dbus interface to send notifications and listen to events.
-        2. Registers an http handler to the webserver for Home Assistant notifications.
-        3. Register callbacks for dbus events (on_action_invoked and on_notification_closed).
-        4. Keeps a reference to the API for firing events in Home Assistant.
-        5. Sets the push_token used to check if the notification is for this device.
-        6. Sets the url_program used to open urls.
+    # Internal state
+    interface: ProxyInterface = field(init=False)
+    history: OrderedDict[int, dict] = field(default_factory=OrderedDict)
+    tagtoid: dict[str, int] = field(default_factory=dict)
 
-        :param dbus: The Dbus class abstraction
+    async def setup_dbus(self, dbus: Dbus) -> bool:
+        """Setup D-Bus interface and callbacks.
+
+        Args:
+            dbus: D-Bus connection for desktop notifications
+
+        Returns:
+            True if setup successful, False otherwise
         """
         # Get the interface
         if not (interface := await dbus.get_interface("org.freedesktop.Notifications")):
             logger.warning("Could not find org.freedesktop.Notifications interface, disabling notification support.")
-            return
+            return False
 
         self.interface = interface
         # Setup dbus callbacks
@@ -136,18 +126,11 @@ class Notifier:
         self.interface.on_notification_closed(self.on_close)
 
         # Setup http server notification handler
-        webserverver.set_notification_handler(self.on_ha_notification)
-
-        # API and necessary data
-        self.api = api
-        assert companion.state.push_token, "Companion state must have a push_token"
-        self.push_token = companion.state.push_token
-        self.url_program = companion.config.services.notifications.url_program
-        self.commands = companion.config.services.notifications.commands
-        self.ha_url = companion.ha_url
+        self.server.set_notification_handler(self.on_ha_notification)
+        return True
 
     # Entrypoint to the Class logic
-    async def on_ha_notification(self, request) -> Response:
+    async def on_ha_notification(self, request: Request) -> Response:
         """Function that handles the notification POST request by Home Assistant.
 
         This is the only entry point to start logic in this class.
@@ -174,7 +157,10 @@ class Notifier:
         if isinstance(transformed, DBusNotification):
             # It's a DBusNotification object
             asyncio.create_task(self.dbus_notify(transformed, notification))
-            return _ok_response()
+            return json_response(
+                {"success": True, "message": "Notification queued"},
+                status=201,
+            )
         if isinstance(transformed, CommandNotification):
             command_id = transformed.command_id
             command = self.commands.get(command_id)
@@ -270,6 +256,9 @@ class Notifier:
             # check if uri starts with /lovelace or lovelace using regex
             if uri and re.match(r"^/?lovelace", uri):
                 uri = f"{self.ha_url}/{uri.lstrip('/')}"
+            # noAction is a special URL that means do nothing when clicked
+            elif uri == "noAction":
+                uri = "noAction"
             notification["default_action_uri"] = uri
 
             # Hints:
@@ -381,6 +370,11 @@ class Notifier:
             asyncio.create_task(self.ha_event_trigger("action", action, notification))
         else:
             return  # No action to perform
+
+        # Handle special URI types
+        if uri == "noAction":
+            logger.info(f"Action {action=} has noAction URI, doing nothing")
+            return
 
         if uri and uri.startswith("http") and self.url_program:
             logger.info(f"Launching {action=} {uri=}")

@@ -4,20 +4,32 @@ import logging
 import sys
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import toml
+from aiohttp import ClientSession
 from tabulate import tabulate
-from xdg_base_dirs import xdg_config_home
 
 from .api import API, Server
-from .companion import Companion, CompanionConfig, get_state_dir
+from .companion import Companion, CompanionConfig
 from .dbus import Dbus
-from .hardware_base import DeviceClass
+from .module_base import DeviceClass, Module, Sensor
+from .module_config import ModulesConfig
 from .notifier import Notifier
 from .oauth import OAuthFlow
+from .paths import get_default_config_path
 from .secret_storage import FileSecretStorage, LibSecretStorage, SecretStorage, SecretStorageBackend
 from .secret_storage.file import check_file_permissions
-from .sensor import HARDWARE_CLASSES, SensorManager
+from .sensor import SensorManager
+
+
+def get_enabled_module_instances(module_config: ModulesConfig) -> list[Module]:
+    """Get list of enabled module instances."""
+    enabled = []
+    for module_class, config in module_config.get_enabled_module_classes():
+        enabled.append(module_class(config))
+    return enabled
+
 
 # set logging level using and environment variable
 logger = logging.getLogger("halinuxcompanion")
@@ -33,7 +45,7 @@ def load_config(file: Path) -> CompanionConfig:
     with file.open() as f:
         try:
             data = toml.load(f)
-            config = CompanionConfig.model_validate(data)
+            config: CompanionConfig = CompanionConfig.model_validate(data)
         except toml.TomlDecodeError:
             sys.exit(f"Config file parse error in {file}")
 
@@ -41,12 +53,7 @@ def load_config(file: Path) -> CompanionConfig:
     if config.ha_token:
         check_file_permissions(file)
 
-    return config  # type: ignore[no-any-return]
-
-
-def get_default_config_path() -> Path:
-    """Get the default config path using XDG_CONFIG_HOME."""
-    return xdg_config_home() / "halinuxcompanion" / "config.toml"  # type: ignore[no-any-return]
+    return config
 
 
 SENSOR_ICONS = {
@@ -66,33 +73,28 @@ async def print_sensor_states(companion: Companion) -> None:
     """Print current states of all enabled sensors."""
     print("\n=== Sensor States ===\n")
 
-    hardware = []
-    for hw_class in HARDWARE_CLASSES.values():
-        hw_config = getattr(companion.hardware, hw_class.config_field)
-        if not hw_config.enabled:
-            continue
-        hardware.append(hw_class(hw_config))
+    modules = get_enabled_module_instances(companion.config.hardware)
 
-    # Discover sensors for each enabled hardware class
-    async def _discover(hw_instance):
-        sensors = await hw_instance.discover_sensors()
-        await hw_instance.update_all_sensors()
-        return hw_instance.config_field, sensors
+    # Discover sensors for each enabled module
+    async def _discover(module_instance: Module) -> tuple[str, list[Sensor]]:
+        sensors = await module_instance.discover_sensors()
+        await module_instance.update_all_sensors()
+        return module_instance.__class__.__name__, sensors
 
-    hw_sensors = await asyncio.gather(*[_discover(hw) for hw in hardware])
+    module_sensors = await asyncio.gather(*[_discover(m) for m in modules])
 
     # Print results
-    for hw_name, sensors in sorted(hw_sensors):
+    for module_name, sensors in sorted(module_sensors):
         if not sensors:
-            print(f"{hw_name}: No sensors discovered")
+            print(f"{module_name}: No sensors discovered")
             continue
 
-        print(f"{hw_name}: {len(sensors)} sensors")
+        print(f"{module_name}: {len(sensors)} sensors")
         items = []
         for sensor in sorted(sensors, key=lambda s: s.unique_id):
             items.append(
                 {
-                    "sensor": f"{SENSOR_ICONS.get(sensor.device_class, '📊')} {sensor.name}",
+                    "sensor": f"{SENSOR_ICONS.get(sensor.device_class, '📊') if sensor.device_class else '📊'} {sensor.name}",
                     "state": sensor.state_str,
                     **sensor.attributes,
                 }
@@ -106,11 +108,8 @@ async def cleanup_sensors(companion: Companion) -> None:
 
     # Discover all sensors that would be created
     current_sensor_ids: set[str] = set()
-    for hw_name, hw_class in HARDWARE_CLASSES.items():
-        hw_config = getattr(companion.hardware, hw_name, None)
-        if not hw_config or not hw_config.enabled:
-            continue
-        discovered = await hw_class(hw_config).discover_sensors()
+    for module_instance in get_enabled_module_instances(companion.config.hardware):
+        discovered = await module_instance.discover_sensors()
         current_sensor_ids.update(sensor.unique_id for sensor in discovered)
 
     print("\n=== Sensor Cleanup Tool ===\n")
@@ -167,6 +166,11 @@ def commandline() -> argparse.Namespace:
         help="Log level",
         default="",
     )
+    parser.add_argument(
+        "--expose-sensor-state",
+        action="store_true",
+        help="Expose sensor state on the HTTP root path (/) - WARNING: This exposes sensitive sensor data",
+    )
 
     # Create subparsers
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -186,7 +190,105 @@ def commandline() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def main():
+def get_storage_backend(config: CompanionConfig) -> SecretStorage:
+    """Get the configured storage backend."""
+    if config.storage_backend == SecretStorageBackend.FILE:
+        return FileSecretStorage()
+    if config.storage_backend == SecretStorageBackend.LIBSECRET:
+        return LibSecretStorage()
+    raise ValueError(f"Invalid {config.storage_backend = }")
+
+
+async def setup_and_run_service(
+    companion: Companion,
+    api: API,
+    server: Server,
+    config: CompanionConfig,
+    args: argparse.Namespace,
+) -> None:
+    """Set up and run the main service loop."""
+    # Initialize dbus connections
+    bus = await Dbus.create()
+
+    # Set up device info for status page
+    server.set_device_info(
+        {
+            "device_name": companion.device_name,
+            "device_id": companion.device_id,
+            "version": companion.companion_version,
+            "ha_url": companion.ha_url,
+        }
+    )
+
+    # Set up sensor state provider that only reads current state
+    sensor_manager: SensorManager | None = None  # Will be set after sensor discovery
+
+    async def get_sensor_states() -> list[dict[str, Any]]:
+        """Get current sensor states without triggering updates."""
+        if sensor_manager is None:
+            return []
+        if not sensor_manager.sensors:
+            return []
+
+        # Return all sensors in a flat list, sorted by unique_id
+        sensor_data = []
+        for sensor in sorted(sensor_manager.sensors, key=lambda s: s.unique_id):
+            sensor_data.append(
+                {
+                    "unique_id": sensor.unique_id,
+                    "name": sensor.name,
+                    "state": sensor.state,
+                    "state_str": sensor.state_str,
+                    "icon": sensor.icon,
+                    "attributes": sensor.attributes,
+                }
+            )
+        return sensor_data
+
+    server.set_sensor_state_provider(get_sensor_states)
+
+    # Print the status page URL
+    print("\n" + "=" * 60)
+    print("🏠 Home Assistant Linux Companion is running!")
+    print("=" * 60)
+    if args.expose_sensor_state:
+        print(f"\n📊 View sensor status at: http://{companion.http_host}:{companion.http_port}/")
+    else:
+        print("\n📊 Sensor status page disabled (use --expose-sensor-state to enable)")
+    print(f"🔔 Notifications endpoint: http://{companion.http_host}:{companion.http_port}/notify")
+    print(f"🔐 OAuth callback: http://{companion.http_host}:{companion.http_port}/auth/callback")
+    print("\n" + "=" * 60 + "\n")
+
+    # Register sensors - assign to the nonlocal variable
+    sensor_manager = SensorManager(api=api, dbus=bus, module_config=config.hardware)
+
+    try:
+        await sensor_manager.discover_and_register_sensors()
+
+    except Exception:
+        logger.critical("Sensor registration failed", exc_info=True)
+        raise
+
+    # Initialize the notifier which implies the webserver and the dbus interface
+    if config.notifications.enabled:
+        push_token = companion.load_or_generate_push_token()
+        notifier = Notifier(
+            api=api,
+            server=server,
+            push_token=push_token,
+            url_program=config.notifications.url_program,
+            commands=config.notifications.commands,
+            ha_url=config.ha_url.rstrip("/"),
+        )
+        await notifier.setup_dbus(bus)
+
+    # Loop forever updating sensors.
+    while True:
+        await sensor_manager.update_sensors()
+        await asyncio.sleep(companion.refresh_interval)
+
+
+async def main() -> None:
     """Main function
     The program is fairly simple, data is sent and received to/from Home Assistant over HTTP
     Sensors:
@@ -204,28 +306,28 @@ async def main():
     logging.basicConfig(level=log_level)
 
     # Get the storage backend
-    state_dir = get_state_dir()
-    storage: SecretStorage
-    if config.storage_backend == SecretStorageBackend.FILE:
-        storage = FileSecretStorage(state_dir)
-    elif config.storage_backend == SecretStorageBackend.LIBSECRET:
-        storage = LibSecretStorage()
-    else:
-        raise ValueError(f"Invalid {config.storage_backend = }")
+    storage = get_storage_backend(config)
 
     # Companion objet where configuration is stored
     companion = Companion(config)
 
-    # Use unified server for all operations
-    async with Server(companion) as server:
+    # Create shared session and server for all operations
+    async with (
+        ClientSession() as session,
+        Server(companion.http_host, companion.http_port, expose_sensor_state=args.expose_sensor_state) as server,
+    ):
         # Handle OAuth separately (doesn't need API)
         if args.command == "oauth":
-            await OAuthFlow(companion.ha_url, redirect_port=companion.http_port).run(storage, server)
+            await OAuthFlow(companion.ha_url, redirect_port=companion.http_port).run(storage, server, session)
             print("\nOAuth authentication successful.")
             return
 
         # All other commands need API setup
-        api = API(companion, storage)
+        api = API(
+            instance_url=companion.ha_url,
+            storage=storage,
+            session=session,
+        )
         await companion.load_or_register(api)
         api.registration = companion.state.registration_data
 
@@ -249,29 +351,10 @@ async def main():
             )
             sys.exit(1)
 
-        # Initialize dbus connections
-        bus = await Dbus.create()
-
-        # Register sensors
-        sensor_manager = SensorManager(api=api, dbus=bus, hardware_config=companion.hardware)
-
-        try:
-            await sensor_manager.discover_and_register_sensors()
-        except Exception:
-            logger.critical("Sensor registration failed", exc_info=True)
-            raise
-
-        # Initialize the notifier which implies the webserver and the dbus interface
-        if companion.notifier:
-            await Notifier().init(bus, api, server, companion)
-
-        # Loop forever updating sensors.
-        while True:
-            await sensor_manager.update_sensors()
-            await asyncio.sleep(companion.refresh_interval)
+        await setup_and_run_service(companion, api, server, config, args)
 
 
-def run():
+def run() -> None:
     """Entry point for the console script."""
     asyncio.run(main())
 

@@ -1,6 +1,6 @@
 """Tests for battery provider functionality."""
 
-from halinuxcompanion.hardware.battery.provider import BatteryData
+from halinuxcompanion.modules.battery.provider import BatteryData
 
 
 class TestBatteryData:

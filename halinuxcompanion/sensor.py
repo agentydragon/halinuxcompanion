@@ -6,39 +6,12 @@ from aiohttp import ClientError
 
 from halinuxcompanion.api import API
 from halinuxcompanion.dbus import Dbus, register_sensor_dbus_handlers
-from halinuxcompanion.hardware import (
-    BluetoothHardwareClass,
-    CameraHardwareClass,
-    CPUHardwareClass,
-    LidHardwareClass,
-    MemoryHardwareClass,
-    NetworkHardwareClass,
-    TemperatureHardwareClass,
-    UptimeHardwareClass,
-)
-from halinuxcompanion.hardware.battery_hardware import BatteryHardwareClass
-from halinuxcompanion.hardware_base import HardwareClass, HardwareSensor
-from halinuxcompanion.hardware_config import HardwareConfig
+from halinuxcompanion.module_base import Module, Sensor
+from halinuxcompanion.module_config import ModulesConfig
 
 from .constants import SC_REGISTER_SENSOR
 
 logger = logging.getLogger(__name__)
-
-# Map of hardware config fields to hardware classes
-HARDWARE_CLASSES: dict[str, type[HardwareClass]] = {
-    hw_class.config_field: hw_class  # type: ignore[type-abstract]
-    for hw_class in [
-        BatteryHardwareClass,
-        BluetoothHardwareClass,
-        CameraHardwareClass,
-        CPUHardwareClass,
-        LidHardwareClass,
-        MemoryHardwareClass,
-        NetworkHardwareClass,
-        TemperatureHardwareClass,
-        UptimeHardwareClass,
-    ]
-}
 
 
 @dataclass
@@ -47,10 +20,12 @@ class SensorManager:
 
     api: API
     dbus: Dbus
-    hardware_config: HardwareConfig
+    module_config: ModulesConfig
     update_counter: int = 0
-    sensors: list[HardwareSensor] = field(default_factory=list)
-    hardware_instances: list[HardwareClass] = field(default_factory=list)
+    sensors: list[Sensor] = field(default_factory=list)
+    module_instances: list[Module] = field(default_factory=list)
+    _last_sensor_ids: set[str] = field(default_factory=set)
+    _last_full_log_time: float = field(default_factory=lambda: asyncio.get_event_loop().time())
 
     async def update_sensors(self) -> bool:
         """Update all sensors with Home Assistant
@@ -63,14 +38,41 @@ class SensorManager:
 
         self.update_counter += 1
 
-        # Update all hardware classes (which update their sensors directly)
+        # Update all modules (which update their sensors directly)
         await asyncio.gather(
-            *[hw.update_all_sensors() for hw in self.hardware_instances],
+            *[module.update_all_sensors() for module in self.module_instances],
             return_exceptions=True,
         )
 
+        # Check for sensor changes
+        current_sensor_ids = {s.unique_id for s in self.sensors}
+        added = current_sensor_ids - self._last_sensor_ids
+        removed = self._last_sensor_ids - current_sensor_ids
+
+        # Log based on what changed
         prefix = f"Sensors update {self.update_counter}"
-        logger.info(f"{prefix} with sensors: {' '.join(s.unique_id for s in self.sensors)}")
+        current_time = asyncio.get_event_loop().time()
+        hours_since_last_full_log = (current_time - self._last_full_log_time) / 3600
+
+        if added or removed or hours_since_last_full_log >= 1:
+            # Log full list if changes or every hour
+            if added:
+                logger.info(f"{prefix}: Added sensors: {' '.join(added)}")
+            if removed:
+                logger.info(f"{prefix}: Removed sensors: {' '.join(removed)}")
+
+            if hours_since_last_full_log >= 1:
+                logger.info(
+                    f"{prefix}: Full sensor list ({len(self.sensors)} total): {' '.join(s.unique_id for s in self.sensors)}"
+                )
+                self._last_full_log_time = current_time
+            else:
+                logger.info(f"{prefix}: Total {len(self.sensors)} sensors")
+
+            self._last_sensor_ids = current_sensor_ids
+        else:
+            # Just log the count for regular updates
+            logger.debug(f"{prefix}: Updating {len(self.sensors)} sensors")
 
         try:
             res = await self.api.webhook_post(
@@ -99,16 +101,13 @@ class SensorManager:
 
     async def discover_and_register_sensors(self) -> None:
         """Discover and register sensors."""
-        # Discover sensors for each enabled hardware class
-        for hw_name, hw_class in HARDWARE_CLASSES.items():
-            hw_config = getattr(self.hardware_config, hw_name)
-            if not hw_config.enabled:
-                continue
-            logger.info(f"Discovering {hw_name} sensors...")
-            self.hardware_instances.append(hw_class(hw_config))
+        self.module_instances = [
+            module_class(config) for module_class, config in self.module_config.get_enabled_module_classes()
+        ]
 
-        for hw_instance in self.hardware_instances:
-            self.sensors.extend(await hw_instance.discover_sensors())
+        for module_instance in self.module_instances:
+            logger.info(f"Discovering {module_instance.__class__.__name__} sensors...")
+            self.sensors.extend(await module_instance.discover_sensors())
 
         if not self.sensors:
             logger.warning("No sensors discovered! Check sensor configuration and system capabilities.")
@@ -126,21 +125,9 @@ class SensorManager:
         """Register all sensors with Home Assistant."""
         await asyncio.gather(*[self._register_sensor(sensor) for sensor in self.sensors])
 
-    async def _register_sensor(self, sensor: HardwareSensor) -> None:
+    async def _register_sensor(self, sensor: Sensor) -> None:
         """Register a single sensor with Home Assistant."""
-        data = {
-            "attributes": sensor.attributes,
-            "device_class": sensor.device_class,
-            "icon": sensor.icon,
-            "name": sensor.name,
-            "state": sensor.state,
-            "type": sensor.type,
-            "unique_id": sensor.unique_id,
-            "unit_of_measurement": sensor.unit_of_measurement,
-            "state_class": sensor.state_class,
-            "entity_category": None,  # sensor.entity_category,
-        }
-        payload = {"data": data, "type": "register_sensor"}
+        payload = {"data": sensor.to_registration_dict(), "type": "register_sensor"}
         logger.info(f"Registering sensor: {sensor.unique_id}")
         logger.debug(f"Registration {payload=}")
 

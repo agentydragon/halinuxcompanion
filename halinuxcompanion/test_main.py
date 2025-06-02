@@ -1,57 +1,77 @@
-import json
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from halinuxcompanion.companion import CommandConfig, Companion, CompanionConfig
+from halinuxcompanion.companion import CommandConfig, Companion, CompanionConfig, NotificationServiceConfig
+from halinuxcompanion.module_config import ModulesConfig
 from halinuxcompanion.notifier import Notifier
-
-
-def get_config() -> dict:
-    with open("tests/config.json") as f:
-        data = json.load(f)
-        return data  # type: ignore[no-any-return]
-
-
-class RequestStub:
-    def __init__(self, json):
-        self.__json = json
-
-    async def json(self):
-        return self.__json
+from halinuxcompanion.secret_storage import SecretStorageBackend
 
 
 def setup_companion() -> Companion:
-    data = get_config()
-    config = CompanionConfig(**data)
+    config = CompanionConfig(
+        ha_url="http://localhost:9999/",
+        ha_token="test_token",
+        device_id="testpc",
+        device_name="test",
+        manufacturer="test",
+        model="Computer",
+        local_http_host="localhost",
+        local_http_port=8400,
+        refresh_interval=15,
+        loglevel="INFO",
+        storage_backend=SecretStorageBackend.FILE,
+        hardware=ModulesConfig(),  # All disabled by default
+        notifications=NotificationServiceConfig(
+            enabled=True,
+            url_program="xdg-open",
+            commands={
+                "command_suspend": CommandConfig(name="Suspend", command=["ls"]),
+            },
+        ),
+    )
     companion = Companion(config)
     return companion
 
 
 def setup_notifier() -> Notifier:
-    notifier = Notifier()
+    from unittest.mock import MagicMock
+
+    # Create mock dependencies
+    mock_api = MagicMock()
+    mock_server = MagicMock()
+
+    notifier = Notifier(
+        api=mock_api,
+        server=mock_server,
+        push_token="d0f7bd90-7b23-11ee-852f-0 0d861ab3a9c",
+        url_program="xdg-open",
+        commands={
+            "command_suspend": CommandConfig(name="Suspend", command=["ls"]),
+        },
+        ha_url="http://localhost:8123",
+    )
     return notifier
 
 
 @pytest.mark.asyncio
-async def test_notifier():
+async def test_notifier() -> None:
     notifier = setup_notifier()
-    notifier.push_token = "d0f7bd90-7b23-11ee-852f-0 0d861ab3a9c"
-    notifier.commands = {
-        "command_suspend": CommandConfig(name="Suspend", command=["ls"]),
-    }
 
     # Existing command
     payload = {
         "message": "command_suspend",
         "push_token": notifier.push_token,
         "registration_info": {
-            "app_id": "Linux_Companion0.0.1",
-            "app_version": "0.0.1",
+            "app_id": "halinuxcompanion-0.1.0",
+            "app_version": "0.1.0",
             "webhook_id": "fd0e8af0183a1445e029436995286479a57d5a455b4d6ce3e40b743c3969b 505",
             "os_version": "6.5.9-arch2-1",
         },
     }
-    result = await notifier.on_ha_notification(RequestStub(payload))
+    request = MagicMock()
+    request.json = AsyncMock(return_value=payload)
+    result = await notifier.on_ha_notification(request)
     assert result is not None
 
     # Non existing command
@@ -59,16 +79,18 @@ async def test_notifier():
         "message": "suspend",
         "push_token": notifier.push_token,
         "registration_info": {
-            "app_id": "Linux_Companion0.0.1",
-            "app_version": "0.0.1",
+            "app_id": "halinuxcompanion-0.1.0",
+            "app_version": "0.1.0",
             "webhook_id": "fd0e8af0183a1445e029436995286479a57d5a455b4d6ce3e40b743c3969b 505",
             "os_version": "6.5.9-arch2-1",
         },
     }
-    result = await notifier.on_ha_notification(RequestStub(payload))
+    request = MagicMock()
+    request.json = AsyncMock(return_value=payload)
+    result = await notifier.on_ha_notification(request)
     assert result is not None
 
 
-def test_companion_init():
+def test_companion_init() -> None:
     companion = setup_companion()
     assert companion is not None

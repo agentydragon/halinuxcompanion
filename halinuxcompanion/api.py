@@ -1,25 +1,22 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientResponse, ClientSession, web
+from jinja2 import Environment, PackageLoader, select_autoescape
 
-from .companion import Companion
 from .models import RegistrationData
 from .oauth import AuthenticationError, OAuthTokens, ensure_valid_oauth_token
 
 if TYPE_CHECKING:
     from .secret_storage import SecretStorage
 
-from .constants import (
-    SC_INTEGRATION_DELETED,
-    SC_INVALID_JSON,
-    SC_MOBILE_COMPONENT_NOT_LOADED,
-    SC_UNAUTHORIZED,
-)
+from .constants import SC_INTEGRATION_DELETED, SC_INVALID_JSON, SC_MOBILE_COMPONENT_NOT_LOADED, SC_UNAUTHORIZED
 
 logger = logging.getLogger(__name__)
-SESSION: ClientSession | None = None
 
 
 class API:
@@ -29,38 +26,40 @@ class API:
     registration: RegistrationData | None = None
     session: ClientSession
     oauth_tokens: OAuthTokens | None = None
-    companion: Companion
+    instance_url: str
 
-    def __init__(self, companion: Companion, storage: "SecretStorage") -> None:
-        global SESSION
-        if SESSION is None:
-            SESSION = ClientSession()
-        self.session = SESSION
-        self.companion = companion
+    def __init__(
+        self,
+        instance_url: str,
+        storage: "SecretStorage",
+        session: ClientSession,
+    ) -> None:
+        """Initialize API client.
+
+        Args:
+            instance_url: Home Assistant URL
+            storage: Secret storage backend for authentication
+            session: aiohttp session to use for requests
+        """
+        self.session = session
+        self.instance_url = instance_url.rstrip("/")
         self.storage = storage
 
-        # Try authentication providers in order
-        self.token = None
-        self.oauth_tokens = None
+        # Initialize authentication attributes
+        self.oauth_tokens: OAuthTokens | None = None
+        self.token: str | None = None
 
-        # Try long-lived token from config or storage
-        self.token = companion.ha_token or storage.load_long_lived_token()
-        if self.token:
-            logger.info("Using long-lived access token")
-        # Try OAuth tokens from storage
-        elif oauth_tokens := storage.load_oauth_tokens():
+        # Try authentication providers in order, oauth first
+        if oauth_tokens := storage.load_oauth_tokens():
             self.oauth_tokens = oauth_tokens
             logger.info("Using OAuth tokens from storage")
-        else:
-            # No authentication available - this is a fatal error
-            raise AuthenticationError(
-                "No authentication configured. Please provide one of:\n"
-                "1. Long-lived access token in config file (ha_token)\n"
-                "2. Run OAuth authentication: halinuxcompanion --oauth"
-            )
+        elif token := storage.load_long_lived_token():
+            self.token = token
+            logger.info("Using long-lived access token")
+        # Note: We don't raise here anymore - let has_valid_auth() check
 
     @property
-    def headers(self) -> dict:
+    def headers(self) -> dict[str, Any]:
         """Get authorization headers based on current authentication."""
         token = self._get_valid_token()
         if token:
@@ -107,11 +106,6 @@ class API:
         return bool(self.token) or bool(self.oauth_tokens)
 
     @property
-    def instance_url(self) -> str:
-        """Get the Home Assistant instance URL."""
-        return self.companion.ha_url
-
-    @property
     def webhook_url(self) -> str:
         """Get the full webhook URL."""
         if not self.registration:
@@ -124,7 +118,7 @@ class API:
         :param type: Whats being posted, ussed for logging
         :param data: The data to send in the body of the request
         """
-        logger.debug("Sending webhook POST")
+        logger.debug(f"Sending webhook POST: {data}")
 
         async with self.session.post(self.webhook_url, json=data) as res:
             logger.debug(f"Received response {res.status} to request")
@@ -174,6 +168,14 @@ class API:
         return resp  # type: ignore[no-any-return]
 
 
+@dataclass
+class OAuthSession:
+    """Active OAuth session state."""
+
+    state: str
+    result_future: asyncio.Future[dict[str, Any]] = field(default_factory=asyncio.Future)
+
+
 class Server:
     """Unified HTTP server for OAuth callbacks and Home Assistant notifications."""
 
@@ -181,19 +183,36 @@ class Server:
     host: str
     port: int
     runner: web.AppRunner
-    _oauth_future: asyncio.Future[web.Request] | None = None
-    _notification_handler: Any = None
+    _oauth_session: OAuthSession | None = None
+    _notification_handler: Callable[[web.Request], Awaitable[web.Response]] | None = None
+    _sensor_state_provider: Callable[[], Awaitable[list[dict[str, Any]]]] | None = None
+    _device_info: dict[str, str] | None = None
+    _jinja_env: Environment
 
-    def __init__(self, companion: Companion) -> None:
+    def __init__(self, host: str, port: int, expose_sensor_state: bool = False) -> None:
+        """Initialize server with explicit host and port.
+
+        Args:
+            host: IP address or hostname to bind to
+            port: Port number to listen on
+            expose_sensor_state: Whether to expose sensor state on root path
+        """
         self.app = web.Application()
-        self.host = companion.http_host
-        self.port = companion.http_port
+        self.host = host
+        self.port = port
         self.runner = web.AppRunner(self.app)
 
-        # Always register the OAuth callback route
+        # Initialize Jinja2 environment
+        self._jinja_env = Environment(
+            loader=PackageLoader("halinuxcompanion", "resources"),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
         self.app.router.add_get("/auth/callback", self._handle_oauth_callback)
-        # Always register the notification route
         self.app.router.add_post("/notify", self._handle_notification)
+
+        # Only expose sensor state if explicitly enabled
+        if expose_sensor_state:
+            self.app.router.add_get("/", self._handle_root)
 
     async def __aenter__(self) -> "Server":
         """Enter the async context manager and start the server."""
@@ -206,34 +225,122 @@ class Server:
 
     async def _handle_oauth_callback(self, request: web.Request) -> web.Response:
         """Handle OAuth callback requests."""
-        if self._oauth_future is None or self._oauth_future.done():
-            return web.Response(text="No OAuth flow in progress", status=404)
-
-        # Extract code and state from request
         code = request.query.get("code")
+        state = request.query.get("state")
+        error = request.query.get("error")
 
+        # No active OAuth session
+        if self._oauth_session is None:
+            return web.Response(
+                text=(
+                    "<h1>No OAuth Flow Active</h1>"
+                    "<p>This callback was received but no OAuth flow is currently active.</p>"
+                    "<p>This might happen if:</p>"
+                    "<ul>"
+                    "<li>The OAuth flow timed out</li>"
+                    "<li>You refreshed this page after authentication</li>"
+                    "<li>Multiple OAuth attempts were made</li>"
+                    "</ul>"
+                ),
+                content_type="text/html",
+                status=400,
+            )
+
+        # State mismatch - security check
+        if state != self._oauth_session.state:
+            error_msg = f"State mismatch: expected {self._oauth_session.state}, got {state}"
+            self._oauth_session.result_future.set_exception(AuthenticationError(error_msg))
+
+            return web.Response(
+                text=(
+                    "<h1>Invalid OAuth State</h1>"
+                    f"<p>{error_msg}</p>"
+                    "<p>This might be an old authentication attempt or a security issue.</p>"
+                ),
+                content_type="text/html",
+                status=400,
+            )
+
+        # Handle OAuth error from HA
+        if error:
+            error_desc = request.query.get("error_description", error)
+            self._oauth_session.result_future.set_exception(AuthenticationError(f"OAuth error: {error_desc}"))
+            return web.Response(
+                text=(f"<h1>Authentication Failed</h1><p>Home Assistant returned an error: {error_desc}</p>"),
+                content_type="text/html",
+                status=400,
+            )
+
+        # Handle success
         if code:
-            # Pass the entire request to the future for the OAuth flow to handle
-            self._oauth_future.set_result(request)
-        else:
-            error = request.query.get("error", "Unknown error")
-            self._oauth_future.set_exception(AuthenticationError(error))
+            # Pass the code to the waiting OAuth flow
+            self._oauth_session.result_future.set_result({"code": code, "state": state})
 
-        return web.Response(text="Authentication received! You can close this window.", content_type="text/html")
+            return web.Response(
+                text=(
+                    "<h1>Authentication Successful!</h1>"
+                    "<p>You have been authenticated with Home Assistant.</p>"
+                    "<p>You can now close this window and return to the terminal.</p>"
+                ),
+                content_type="text/html",
+            )
 
-    def set_oauth_future(self, future: asyncio.Future[web.Request]) -> None:
-        """Set the future to receive OAuth callback data."""
-        self._oauth_future = future
+        # No code and no error
+        self._oauth_session.result_future.set_exception(AuthenticationError("No authorization code received"))
+        return web.Response(
+            text=("<h1>No Authorization Code</h1><p>Home Assistant did not provide an authorization code.</p>"),
+            content_type="text/html",
+            status=400,
+        )
+
+    async def run_oauth_flow(self, state: str) -> dict[str, Any]:
+        """Run OAuth flow and wait for callback.
+
+        Args:
+            ha_url: Home Assistant URL
+            client_id: OAuth client ID
+            state: OAuth state for security
+
+        Returns:
+            Dict with 'code' and 'state' from the callback
+
+        Raises:
+            RuntimeError: If OAuth flow is already active
+            AuthenticationError: If authentication fails
+        """
+        if self._oauth_session is not None:
+            raise RuntimeError("OAuth flow already in progress")
+
+        # Create OAuth session
+        self._oauth_session = OAuthSession(
+            state=state,
+        )
+
+        try:
+            # Wait for callback
+            result = await self._oauth_session.result_future
+            return result
+        finally:
+            # Clean up session
+            self._oauth_session = None
 
     async def _handle_notification(self, request: web.Request) -> web.Response:
         """Handle notification requests from Home Assistant."""
         if self._notification_handler is None:
             return web.Response(text="Notification handler not configured", status=503)
-        return await self._notification_handler(request)  # type: ignore[no-any-return]
+        return await self._notification_handler(request)
 
-    def set_notification_handler(self, handler: Any) -> None:
+    def set_notification_handler(self, handler: Callable[[web.Request], Awaitable[web.Response]]) -> None:
         """Set the notification handler."""
         self._notification_handler = handler
+
+    def set_sensor_state_provider(self, provider: Callable[[], Awaitable[list[dict[str, Any]]]]) -> None:
+        """Set the sensor state provider callback."""
+        self._sensor_state_provider = provider
+
+    def set_device_info(self, device_info: dict[str, str]) -> None:
+        """Set device information for display on status page."""
+        self._device_info = device_info
 
     async def start(self) -> None:
         logger.info(f"Starting http server on {self.host}:{self.port}")
@@ -245,3 +352,26 @@ class Server:
     async def stop(self) -> None:
         """Stop the HTTP server."""
         await self.runner.cleanup()
+
+    async def _handle_root(self, _request: web.Request) -> web.Response:
+        """Handle root path - display sensor states using Jinja2 template."""
+        template = self._jinja_env.get_template("status_page.html.j2")
+
+        context: dict[str, Any] = {
+            "device_info": self._device_info,
+            "sensor_states": None,
+            "error": None,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+        if self._sensor_state_provider is None:
+            context["error"] = "Sensor state provider not configured. The application may still be starting up."
+        else:
+            try:
+                context["sensor_states"] = await self._sensor_state_provider()
+            except Exception as e:
+                logger.exception("Error getting sensor states")
+                context["error"] = f"Error retrieving sensor states: {e}"
+
+        html = template.render(**context)
+        return web.Response(text=html, content_type="text/html")

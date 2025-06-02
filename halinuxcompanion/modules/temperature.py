@@ -1,4 +1,4 @@
-"""Temperature hardware class implementation."""
+"""Temperature module implementation."""
 
 from __future__ import annotations
 
@@ -6,30 +6,34 @@ import logging
 
 import psutil
 
-from ..hardware_base import DeviceClass, HardwareClass, HardwareSensor, StateClass
-from ..hardware_config import TemperatureConfig
+from ...module_base import DeviceClass, Module, Sensor, StateClass
+from ...module_config import TemperatureConfig
 
 logger = logging.getLogger(__name__)
 
 
-class TemperatureHardwareClass(HardwareClass):
-    """Temperature hardware class with bulk update support."""
-
-    config_field = "temperature"
+class TemperatureModule(Module):
+    """Temperature module with bulk update support."""
 
     def __init__(self, config: TemperatureConfig):
         super().__init__(config)
         self.config: TemperatureConfig = config
         # hw id => sensor label => sensor
-        self._sensors: dict[str, dict[str, HardwareSensor]] = {}
+        self._sensors: dict[str, dict[str, Sensor]] = {}
 
-    async def discover_sensors(self) -> list[HardwareSensor]:
+    async def discover_sensors(self) -> list[Sensor]:
         """Discover available temperature chips."""
-        if not (temps := psutil.sensors_temperatures()):
+        try:
+            temps = psutil.sensors_temperatures()
+        except (OSError, RuntimeError):
+            logger.exception("Failed to retrieve temperature sensors")
+            return []
+
+        if not temps:
             logger.debug("No temperature sensors found")
             return []
 
-        sensors: dict[str, dict[str, HardwareSensor]] = {}
+        sensors: dict[str, dict[str, Sensor]] = {}
         for chip_name, chip_temps in temps.items():
             sensors[chip_name] = {}
 
@@ -41,7 +45,7 @@ class TemperatureHardwareClass(HardwareClass):
                 if temp.label:
                     name += f" - {temp.label}"
                     unique_id += f":{temp.label}"
-                sensors[chip_name][temp.label] = HardwareSensor(
+                sensors[chip_name][temp.label] = Sensor(
                     unique_id=unique_id,
                     name=name,
                     unit_of_measurement="°C",
@@ -58,20 +62,31 @@ class TemperatureHardwareClass(HardwareClass):
 
     async def update_all_sensors(self) -> None:
         """Bulk update all temperature sensors in one read."""
+        try:
+            temps = psutil.sensors_temperatures()
+        except (OSError, RuntimeError) as e:
+            # Set all sensors to error state
+            for chip_sensors in self._sensors.values():
+                for sensor in chip_sensors.values():
+                    sensor.set_error(e, "Failed to read temperature sensors")
+            return
+
         # Update data for each temperature reading
-        for chip_name, chip_temps in psutil.sensors_temperatures().items():
-            if not (chip_sensors := self._sensors.get(chip_name)):
+        for chip_name, chip_temps in temps.items():
+            if chip_name not in self._sensors:
                 # This chip wasn't discovered during initialization
                 # TODO: ... rediscovery ...
                 logger.info(f"Skipping unknown temperature chip: {chip_name}")
                 continue
 
+            chip_sensors = self._sensors[chip_name]
             for temp in chip_temps:
                 sensor_label = temp.label or "default"
-                if not (sensor := chip_sensors.get(sensor_label)):
+                if sensor_label not in chip_sensors:
                     continue
-                sensor.state = temp.current
-                sensor.attributes = {"chip": chip_name, "label": sensor_label}
+                sensor = chip_sensors[sensor_label]
+                sensor.set_ok(temp.current)
+                sensor.attributes.update({"chip": chip_name, "label": sensor_label})
                 if temp.high is not None:
                     sensor.attributes["high"] = temp.high
                 if temp.critical is not None:
