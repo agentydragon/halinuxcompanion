@@ -140,17 +140,37 @@ class Notifier:
         :param request: The request object
         :return: The response object
         """
-        notification: dict = await request.json()
+        # Validate Content-Type
+        content_type = request.headers.get("Content-Type", "")
+        if not content_type.startswith("application/json"):
+            logger.warning(f"Invalid Content-Type: {content_type}")
+            return _error_response(
+                "invalid_content_type",
+                "Content-Type must be application/json",
+                status=400,
+            )
+
+        try:
+            notification: dict = await request.json()
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON: {e}")
+            return _error_response(
+                "invalid_json",
+                "Request body must be valid JSON",
+                status=400,
+            )
+
         push_token = notification.get("push_token")
         logger.info(f"Received notification: {notification}")
 
         # Check if the notification is for this device
         if push_token != self.push_token:
-            logger.error(f"Push token mismatch: {push_token=} != {self.push_token=}")
+            logger.warning(f"Push token mismatch: {push_token=} != {self.push_token=}")
+            # Return 404 to avoid information leakage about valid tokens
             return _error_response(
-                "push_token_mismatch",
-                "Push token does not match the registered token",
-                status=400,
+                "not_found",
+                "Webhook not found",
+                status=404,
             )
 
         transformed = self.notification_transform(notification)

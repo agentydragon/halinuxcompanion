@@ -9,5 +9,19 @@ ExecStart=/usr/bin/env halinuxcompanion
 Restart=always
 RestartSec=30
 
+# Security hardening
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ReadWritePaths=%h/.local/state/halinuxcompanion %h/.config/halinuxcompanion
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
 [Install]
 WantedBy=default.target

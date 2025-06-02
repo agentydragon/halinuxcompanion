@@ -8,7 +8,7 @@ ha_config/
 .coverage
 halinuxcompanion.egg-info
 
-references/android
-references/home-assistant-core
+references/*
+!references/fetch.sh
 
 .claude/settings.local.json

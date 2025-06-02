@@ -1,11 +1,15 @@
-from unittest.mock import AsyncMock, MagicMock
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
-import pytest
+from aiohttp import web
 
 from halinuxcompanion.companion import CommandConfig, Companion, CompanionConfig, NotificationServiceConfig
 from halinuxcompanion.module_config import ModulesConfig
 from halinuxcompanion.notifier import Notifier
 from halinuxcompanion.secret_storage import SecretStorageBackend
+
+if TYPE_CHECKING:
+    from aiohttp.test_utils import TestClient
 
 
 def setup_companion() -> Companion:
@@ -34,9 +38,8 @@ def setup_companion() -> Companion:
     return companion
 
 
-def setup_notifier() -> Notifier:
-    from unittest.mock import MagicMock
-
+def create_notifier_app() -> tuple[web.Application, Notifier]:
+    """Create an aiohttp app with notifier routes for testing."""
     # Create mock dependencies
     mock_api = MagicMock()
     mock_server = MagicMock()
@@ -44,51 +47,85 @@ def setup_notifier() -> Notifier:
     notifier = Notifier(
         api=mock_api,
         server=mock_server,
-        push_token="d0f7bd90-7b23-11ee-852f-0 0d861ab3a9c",
+        push_token="d0f7bd90-7b23-11ee-852f-00d861ab3a9c",
         url_program="xdg-open",
         commands={
             "command_suspend": CommandConfig(name="Suspend", command=["ls"]),
         },
         ha_url="http://localhost:8123",
     )
-    return notifier
+
+    app = web.Application()
+    app.router.add_post("/notify", notifier.on_ha_notification)
+
+    return app, notifier
 
 
-@pytest.mark.asyncio
-async def test_notifier() -> None:
-    notifier = setup_notifier()
+async def test_notifier_existing_command(aiohttp_client) -> None:
+    """Test notifier handles existing command correctly."""
+    app, notifier = create_notifier_app()
+    client = await aiohttp_client(app)
 
-    # Existing command
     payload = {
         "message": "command_suspend",
         "push_token": notifier.push_token,
         "registration_info": {
             "app_id": "halinuxcompanion-0.1.0",
             "app_version": "0.1.0",
-            "webhook_id": "fd0e8af0183a1445e029436995286479a57d5a455b4d6ce3e40b743c3969b 505",
+            "webhook_id": "test-webhook-id",
             "os_version": "6.5.9-arch2-1",
         },
     }
-    request = MagicMock()
-    request.json = AsyncMock(return_value=payload)
-    result = await notifier.on_ha_notification(request)
-    assert result is not None
 
-    # Non existing command
+    resp = await client.post("/notify", json=payload)
+    assert resp.status == 200
+    data = await resp.json()
+    assert data is not None
+
+
+async def test_notifier_non_existing_command(aiohttp_client) -> None:
+    """Test notifier handles non-existing command correctly."""
+    app, notifier = create_notifier_app()
+    client: TestClient = await aiohttp_client(app)
+
     payload = {
         "message": "suspend",
         "push_token": notifier.push_token,
         "registration_info": {
             "app_id": "halinuxcompanion-0.1.0",
             "app_version": "0.1.0",
-            "webhook_id": "fd0e8af0183a1445e029436995286479a57d5a455b4d6ce3e40b743c3969b 505",
+            "webhook_id": "test-webhook-id",
             "os_version": "6.5.9-arch2-1",
         },
     }
-    request = MagicMock()
-    request.json = AsyncMock(return_value=payload)
-    result = await notifier.on_ha_notification(request)
-    assert result is not None
+
+    resp = await client.post("/notify", json=payload)
+    assert resp.status == 200
+    data = await resp.json()
+    assert data is not None
+
+
+async def test_notifier_wrong_push_token(aiohttp_client) -> None:
+    """Test notifier returns 404 for wrong push token to avoid information leakage."""
+    app, notifier = create_notifier_app()
+    client: TestClient = await aiohttp_client(app)
+
+    payload = {
+        "message": "Test notification",
+        "push_token": "wrong_token_12345",
+        "registration_info": {
+            "app_id": "halinuxcompanion-0.1.0",
+            "app_version": "0.1.0",
+            "webhook_id": "test-webhook-id",
+            "os_version": "6.5.9-arch2-1",
+        },
+    }
+
+    resp = await client.post("/notify", json=payload)
+    assert resp.status == 404
+    data = await resp.json()
+    assert data["error"] == "not_found"
+    assert data["errorMessage"] == "Webhook not found"
 
 
 def test_companion_init() -> None:

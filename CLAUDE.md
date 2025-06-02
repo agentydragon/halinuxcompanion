@@ -49,6 +49,22 @@ tox
 black . --line-length 120
 ```
 
+### Testing Conventions
+
+The project follows these testing conventions:
+
+1. **Unit Tests**: Co-located with the modules they test
+   - Naming pattern: `test_*.py` in the same directory as the module
+   - Example: `halinuxcompanion/secret_storage/test_file.py` tests `file.py`
+   - These tests focus on testing individual units with mocked dependencies
+
+2. **Integration Tests**: Located in the top-level `tests/` directory
+   - Tests that require real external resources (network, hardware, etc.)
+   - Tests that span multiple modules or test end-to-end flows
+   - Example: `tests/test_oauth_server_integration.py` tests the full OAuth flow
+
+This approach allows for quick unit test discovery while keeping integration tests organized separately.
+
 ## Architecture
 
 ### Core Components
@@ -152,3 +168,7 @@ black . --line-length 120
 
 ## Pending Implementation Tasks
 - `@references/companion.home-assistant/docs/notifications/` should be implemented under notifier  - at least the subset that we can support
+
+## Code Safety Guidelines
+
+- Do not assemble URLs with plain string concat, e.g. `[f"{k}={v}" for k, v in params.items()]`. use some existing library that auto-wraps escaping etc.; apply *generally* for *all* formats that need escaping/similar.

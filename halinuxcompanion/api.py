@@ -197,7 +197,8 @@ class Server:
             port: Port number to listen on
             expose_sensor_state: Whether to expose sensor state on root path
         """
-        self.app = web.Application()
+        # Set max request size to 1MB to prevent DoS attacks
+        self.app = web.Application(client_max_size=1024 * 1024)  # 1MB
         self.host = host
         self.port = port
         self.runner = web.AppRunner(self.app)
