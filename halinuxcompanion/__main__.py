@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import toml
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 from tabulate import tabulate
 
 from .api import API, Server
@@ -312,8 +312,10 @@ async def main() -> None:
     companion = Companion(config)
 
     # Create shared session and server for all operations
+    # Set a reasonable timeout for all HTTP operations (30 seconds total, 5 seconds for connection)
+    timeout = ClientTimeout(total=30, connect=5)
     async with (
-        ClientSession() as session,
+        ClientSession(timeout=timeout) as session,
         Server(companion.http_host, companion.http_port, expose_sensor_state=args.expose_sensor_state) as server,
     ):
         # Handle OAuth separately (doesn't need API)

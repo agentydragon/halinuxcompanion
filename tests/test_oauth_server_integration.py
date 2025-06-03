@@ -11,13 +11,14 @@ from halinuxcompanion.api import Server
 from halinuxcompanion.oauth import AuthenticationError
 
 # These are integration tests that require real sockets
-pytestmark = [pytest.mark.asyncio, pytest.mark.requires_hardware]
+pytestmark = [pytest.mark.asyncio, pytest.mark.requires_hardware, pytest.mark.usefixtures("socket_enabled")]
 
 
 @pytest.fixture
-def event_loop(request):
-    """Create an event loop for pytest-homeassistant-custom-component compatibility."""
-    loop = asyncio.new_event_loop()
+def event_loop():
+    """Provide event loop fixture for compatibility with homeassistant pytest plugin."""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
     yield loop
     loop.close()
 
@@ -31,8 +32,9 @@ async def server() -> AsyncGenerator[Server, None]:
 
 
 @pytest.fixture
-def server_port(server: Server) -> int:
+async def server_port(server: Server) -> int:
     """Get the server's assigned port."""
+    # The port is only available after the server is started (server fixture runs first)
     return server.port
 
 

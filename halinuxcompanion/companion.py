@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiohttp
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .constants import DEFAULT_NOTIFIER_PORT, SC_INTEGRATION_DELETED, SC_OK
 from .models import RegistrationData
@@ -55,6 +55,16 @@ class CompanionConfig(BaseModel):
         description="Storage backend for secrets",
     )
     loglevel: str | None = None
+
+    @field_validator("ha_url")
+    @classmethod
+    def validate_ha_url(cls, v: str) -> str:
+        """Validate Home Assistant URL is safe and uses http/https."""
+        from .utils import validate_url_scheme
+
+        if not validate_url_scheme(v):
+            raise ValueError("Invalid URL. Only 'http' and 'https' schemes are allowed for security reasons.")
+        return v
 
 
 logger = logging.getLogger("halinuxcompanion")

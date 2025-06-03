@@ -1,4 +1,3 @@
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from aiohttp import web
@@ -7,9 +6,6 @@ from halinuxcompanion.companion import CommandConfig, Companion, CompanionConfig
 from halinuxcompanion.module_config import ModulesConfig
 from halinuxcompanion.notifier import Notifier
 from halinuxcompanion.secret_storage import SecretStorageBackend
-
-if TYPE_CHECKING:
-    from aiohttp.test_utils import TestClient
 
 
 def setup_companion() -> Companion:
@@ -86,7 +82,7 @@ async def test_notifier_existing_command(aiohttp_client) -> None:
 async def test_notifier_non_existing_command(aiohttp_client) -> None:
     """Test notifier handles non-existing command correctly."""
     app, notifier = create_notifier_app()
-    client: TestClient = await aiohttp_client(app)
+    client = await aiohttp_client(app)
 
     payload = {
         "message": "suspend",
@@ -108,7 +104,7 @@ async def test_notifier_non_existing_command(aiohttp_client) -> None:
 async def test_notifier_wrong_push_token(aiohttp_client) -> None:
     """Test notifier returns 404 for wrong push token to avoid information leakage."""
     app, notifier = create_notifier_app()
-    client: TestClient = await aiohttp_client(app)
+    client = await aiohttp_client(app)
 
     payload = {
         "message": "Test notification",

@@ -396,7 +396,13 @@ class Notifier:
             logger.info(f"Action {action=} has noAction URI, doing nothing")
             return
 
-        if uri and uri.startswith("http") and self.url_program:
+        if uri and self.url_program:
+            # Validate URI scheme for security
+            from halinuxcompanion.utils import validate_url_scheme
+
+            if not validate_url_scheme(uri):
+                return
+
             logger.info(f"Launching {action=} {uri=}")
             asyncio.create_task(
                 run_subprocess_with_logging(
