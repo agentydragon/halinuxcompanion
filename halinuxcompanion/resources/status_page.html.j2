@@ -127,29 +127,6 @@
             padding-top: 20px;
             border-top: 1px solid #ddd;
         }
-        .device-info {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 25px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-        }
-        .device-info-item {
-            text-align: center;
-        }
-        .device-info-label {
-            color: #666;
-            font-size: 0.9em;
-            margin-bottom: 5px;
-        }
-        .device-info-value {
-            color: #333;
-            font-weight: 600;
-            font-size: 1.1em;
-        }
     </style>
 </head>
 <body>
@@ -161,27 +138,6 @@
     </header>
 
     <div class="container">
-        {% if device_info %}
-        <div class="device-info">
-            <div class="device-info-item">
-                <div class="device-info-label">Device Name</div>
-                <div class="device-info-value">{{ device_info.device_name }}</div>
-            </div>
-            <div class="device-info-item">
-                <div class="device-info-label">Device ID</div>
-                <div class="device-info-value">{{ device_info.device_id }}</div>
-            </div>
-            <div class="device-info-item">
-                <div class="device-info-label">Version</div>
-                <div class="device-info-value">{{ device_info.version }}</div>
-            </div>
-            <div class="device-info-item">
-                <div class="device-info-label">Home Assistant</div>
-                <div class="device-info-value"><a href="{{ device_info.ha_url }}" target="_blank" style="color: #0084ff; text-decoration: none;">{{ device_info.ha_url }}</a></div>
-            </div>
-        </div>
-        {% endif %}
-
         {% if error %}
         <div class="error">
             <strong>Error:</strong> {{ error }}

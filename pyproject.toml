@@ -174,8 +174,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["T20"]  # allow print in tests
+"tests/*" = ["T20", "ARG002"]  # allow print and unused fixture arguments in tests
 "**/__main__.py" = ["T20"]  # allow print in CLI
+"**/test_*.py" = ["ARG002"]  # allow unused fixture arguments in test files
 
 [tool.ruff.lint.isort]
 known-first-party = ["halinuxcompanion"]

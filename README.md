@@ -19,11 +19,16 @@ halinuxcompanion supports two authentication methods:
 - Supports secret storage backends (see below)
 
 #### 2. Long-Lived Access Token
-- Add `ha_token` to your config file
-- Get token from: Home Assistant Profile (see `references/developers.home-assistant/docs/auth_api.md` for long-lived token generation)
-- Note: Config files containing tokens must have restricted permissions (600)
+- Get token from your Home Assistant user profile
+- Token storage depends on your secret storage backend:
+  - **With `libsecret` backend**: Use system keyring (e.g., `secret-tool store --label="Home Assistant Token" service halinuxcompanion username token`)
+  - **With `file` backend**: Save to `~/.local/state/halinuxcompanion/long_lived_token` with 600 permissions
 
 ### Secret Storage
+
+Secrets (i.e., OAuth tokens / long-lived access tokens) are stored
+in either files subject to permission checks or in the system keyring.
+They don't go directly into the configuration file.
 
 Authentication tokens can be stored using different backends:
 
@@ -67,12 +72,25 @@ After initial registration, most operations (sensor updates) use webhook authent
 
    **Option A: OAuth (Recommended)**
    ```shell
-   halinuxcompanion --oauth
+   halinuxcompanion oauth
    ```
 
    **Option B: Long-lived token**
-   - Get a token from your Home Assistant user profile (see `references/developers.home-assistant/docs/auth_api.md` for long-lived token generation)
-   - Add `"ha_token": "your-token-here"` to your config file
+   - Get a token from your Home Assistant user profile
+   - Store it based on your `storage_backend` setting:
+
+     For `file` backend (default):
+     ```shell
+     mkdir -p ~/.local/state/halinuxcompanion
+     echo "YOUR_LONG_LIVED_TOKEN" > ~/.local/state/halinuxcompanion/long_lived_token
+     chmod 600 ~/.local/state/halinuxcompanion/long_lived_token
+     ```
+
+     For `libsecret` backend:
+     ```shell
+     secret-tool store --label="Home Assistant Token" service halinuxcompanion username token
+     # Then enter your token when prompted
+     ```
 
 1. Run the application:
 

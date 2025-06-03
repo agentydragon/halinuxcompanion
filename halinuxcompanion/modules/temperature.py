@@ -6,8 +6,8 @@ import logging
 
 import psutil
 
-from ...module_base import DeviceClass, Module, Sensor, StateClass
-from ...module_config import TemperatureConfig
+from ..module_base import DeviceClass, Module, Sensor, StateClass
+from ..module_config import TemperatureConfig
 
 logger = logging.getLogger(__name__)
 

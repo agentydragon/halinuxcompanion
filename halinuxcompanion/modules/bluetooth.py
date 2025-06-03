@@ -9,8 +9,8 @@ from typing import TypeVar, overload
 from dbus_next import BusType, Variant
 from dbus_next.aio import MessageBus
 
-from ...module_base import DeviceClass, Module, ModulePiece, PerPieceUpdateMixin, Sensor, SensorType, StateClass
-from ...module_config import BluetoothConfig
+from ..module_base import BinarySensor, DeviceClass, Module, ModulePiece, PerPieceUpdateMixin, Sensor, StateClass
+from ..module_config import BluetoothConfig
 
 logger = logging.getLogger(__name__)
 
@@ -49,30 +49,21 @@ class BluetoothPiece(ModulePiece):
     def __init__(self, mac: str):
         super().__init__(mac)
         self.mac = mac
-
-        def _sensor(sensor_id, **kwargs):
-            # name will be set later
-            return Sensor(unique_id=f"bluetooth:{mac}:{sensor_id}", **kwargs)
-
-        self.battery_sensor = _sensor(
-            "battery_level",
+        self.battery_sensor = Sensor(
+            unique_id=f"bluetooth:{mac}:battery_level",
             unit_of_measurement="%",
             device_class=DeviceClass.BATTERY,
             state_class=StateClass.MEASUREMENT,
             icon="mdi:battery-bluetooth",
         )
-        self.connected_sensor = _sensor(
-            "connected",
-            type=SensorType.BINARY_SENSOR,
+        self.connected_sensor = BinarySensor(
+            unique_id=f"bluetooth:{mac}:connected",
             device_class=DeviceClass.CONNECTIVITY,
             icon="mdi:bluetooth-connect",
-            state_class=None,  # Binary sensors don't have state_class
         )
-        self.visible_sensor = _sensor(
-            "visible",
-            type=SensorType.BINARY_SENSOR,
+        self.visible_sensor = BinarySensor(
+            unique_id=f"bluetooth:{mac}:visible",
             icon="mdi:bluetooth-audio",
-            state_class=None,  # Binary sensors don't have state_class
         )
 
         self.name: str | None = None  # last known name

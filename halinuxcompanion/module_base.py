@@ -12,12 +12,9 @@ from pydantic import BaseModel, Field
 
 from .module_config import ModuleConfig
 
-# Initialize the unit registry
-ureg = pint.UnitRegistry()
-# Home Assistant unit definitions
-ureg.define("percent = 0.01 * dimensionless = %")
-
 logger = logging.getLogger(__name__)
+
+_ureg = pint.UnitRegistry()
 
 # Type variable for sensor data
 TSensorData = TypeVar("TSensorData")
@@ -149,10 +146,12 @@ class Sensor(BaseModel):
             if self.unit_of_measurement:
                 s += f" {self.unit_of_measurement}"
             return s
+
         if isinstance(self.state, bool) and self.unit_of_measurement is None:
             return str(self.state).lower()
+
         assert isinstance(self.state, (int, float))
-        q = ureg.Quantity(self.state, self.unit_of_measurement)
+        q = _ureg.Quantity(self.state, self.unit_of_measurement)
         # TODO: would be nice to cut off extra precision
         # this returns e.g.: 49.792443999999996 MB
         return f"{q:~#P}"
@@ -177,6 +176,22 @@ class Sensor(BaseModel):
         if self.options is not None:
             result["options"] = self.options
         return result
+
+    def to_update_dict(self) -> dict[str, Any]:
+        return {
+            "attributes": self.attributes,
+            "icon": self.icon,
+            "state": self.state,
+            "type": self.type,
+            "unique_id": self.unique_id,
+        }
+
+
+class BinarySensor(Sensor):
+    type: SensorType = SensorType.BINARY_SENSOR
+
+    # Binary sensors don't have state_class
+    state_class: StateClass | None = None
 
 
 class HardwareProvider(ABC):

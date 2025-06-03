@@ -7,13 +7,8 @@ import subprocess
 from glob import glob
 from subprocess import run
 
-from ...module_base import (
-    Module,
-    ModulePiece,
-    PerPieceUpdateMixin,
-    Sensor,
-)
-from ...module_config import CameraConfig
+from ..module_base import Module, ModulePiece, PerPieceUpdateMixin, Sensor
+from ..module_config import CameraConfig
 
 logger = logging.getLogger(__name__)
 

@@ -19,26 +19,22 @@ class SecretStorageBackend(str, Enum):
 class SecretStorage(ABC):
     """Abstract base class for secret storage backends."""
 
+    @property
     @abstractmethod
-    def load_oauth_tokens(self) -> OAuthTokens | None:
+    def oauth_tokens(self) -> OAuthTokens | None:
         """Load OAuth tokens from storage."""
 
+    @oauth_tokens.setter
     @abstractmethod
-    def save_oauth_tokens(self, tokens: OAuthTokens) -> None:
+    def oauth_tokens(self, tokens: OAuthTokens) -> None:
         """Save OAuth tokens to storage."""
 
+    @property
     @abstractmethod
-    def delete_oauth_tokens(self) -> None:
-        """Delete OAuth tokens from storage."""
-
-    @abstractmethod
-    def load_long_lived_token(self) -> str | None:
+    def long_lived_token(self) -> str | None:
         """Load long-lived access token from storage."""
 
+    @long_lived_token.setter
     @abstractmethod
-    def save_long_lived_token(self, token: str) -> None:
+    def long_lived_token(self, token: str) -> None:
         """Save long-lived access token to storage."""
-
-    @abstractmethod
-    def delete_long_lived_token(self) -> None:
-        """Delete long-lived access token from storage."""

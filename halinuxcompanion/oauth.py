@@ -10,7 +10,7 @@ from urllib.parse import urlencode, urlparse, urlunparse
 from aiohttp import ClientSession
 from pydantic import BaseModel
 
-from .constants import OAUTH_CALLBACK_PORT, SC_OK
+from .constants import SC_OK
 
 if TYPE_CHECKING:
     from .api import Server
@@ -80,46 +80,10 @@ class OAuthFlow:
     """
 
     ha_url: str
-    redirect_port: int = OAUTH_CALLBACK_PORT  # Can be overridden
-    redirect_host: str = "localhost"
-    state: str = field(init=False)  # Always set, generated in __post_init__
-
-    def __post_init__(self) -> None:
-        self.ha_url = self.ha_url.rstrip("/")
-        # Generate state token once at initialization
-        self.state = secrets.token_urlsafe(32)
-
-    @property
-    def redirect_uri(self) -> str:
-        """Build the OAuth callback URI with the given port."""
-        return f"http://localhost:{self.redirect_port}/auth/callback"
-
-    @property
-    def client_id(self) -> str:
-        """Return the client ID for OAuth requests."""
-        return f"http://localhost:{self.redirect_port}"
-
-    @property
-    def authorization_url(self) -> str:
-        # Parse the base URL and add our path and query
-        base = urlparse(self.ha_url)
-        return urlunparse(
-            (
-                base.scheme,
-                base.netloc,
-                "/auth/authorize",
-                "",
-                urlencode(
-                    {
-                        "response_type": "code",
-                        "client_id": self.client_id,
-                        "redirect_uri": self.redirect_uri,
-                        "state": self.state,
-                    }
-                ),
-                "",
-            )
-        )
+    client_id: str
+    redirect_uri: str
+    # Generate state token once at initialization
+    state: str = field(default_factory=lambda: secrets.token_urlsafe(32), init=False)
 
     async def _request_token(self, session: ClientSession, operation: str, data: dict) -> dict[str, Any]:
         """Common method to request tokens from Home Assistant."""
@@ -137,19 +101,6 @@ class OAuthFlow:
 
         logger.info(f"Token {operation} successful, expires at {expires_at.isoformat()} ({expires_delta} from now)")
         return dict(token_data)
-
-    async def exchange_code_for_token(self, session: ClientSession, auth_code: str) -> OAuthTokens:
-        """Exchange the authorization code for access and refresh tokens."""
-        token_data = await self._request_token(
-            session,
-            "exchange",
-            {
-                "grant_type": "authorization_code",
-                "code": auth_code,
-            },
-        )
-        tokens: OAuthTokens = OAuthTokens.model_validate(token_data)
-        return tokens
 
     async def refresh_access_token(self, session: ClientSession, refresh_token: str) -> OAuthTokens:
         """Refresh the access token using the refresh token."""
@@ -187,54 +138,42 @@ class OAuthFlow:
 
         # Open browser
         print("\nOpening browser for authentication...")
-        print(f"If browser doesn't open, please visit: {self.authorization_url}\n")
-        webbrowser.open(self.authorization_url)
+
+        # Parse the base URL and add our path and query
+        base = urlparse(self.ha_url)
+        authorization_url = urlunparse(
+            (
+                base.scheme,
+                base.netloc,
+                "/auth/authorize",
+                "",
+                urlencode(
+                    {
+                        "response_type": "code",
+                        "client_id": self.client_id,
+                        "redirect_uri": self.redirect_uri,
+                        "state": self.state,
+                    }
+                ),
+                "",
+            )
+        )
+
+        print(f"If browser doesn't open, please visit: {authorization_url}\n")
+        webbrowser.open(authorization_url)
 
         # Use the server's integrated OAuth flow
         result = await server.run_oauth_flow(state=self.state)
 
-        # Extract the authorization code
-        auth_code = result["code"]
-
-        # Exchange code for tokens
-        tokens = await self.exchange_code_for_token(session, auth_code)
-        storage.save_oauth_tokens(tokens)
-
-        print("\nAuthentication successful! Tokens saved.")
-
-
-async def ensure_valid_oauth_token(
-    oauth_tokens: OAuthTokens,
-    session: ClientSession,
-    ha_url: str,
-    storage: "SecretStorage",
-) -> OAuthTokens:
-    """Ensure we have a valid OAuth access token, refreshing if needed.
-
-    Args:
-        oauth_tokens: Current OAuth tokens
-        session: Active client session
-        ha_url: Home Assistant URL
-        storage: Secret storage backend
-
-    Returns:
-        Updated OAuth tokens if successful
-
-    Raises:
-        AuthenticationError: If token refresh fails (requires user re-authentication)
-    """
-    # If token is still valid, return as-is
-    if not oauth_tokens.expires_soon:
-        return oauth_tokens
-
-    # Try to refresh
-    logger.info("Access token expired, attempting to refresh...")
-    try:
-        new_tokens = await OAuthFlow(ha_url).refresh_access_token(session, oauth_tokens.refresh_token)
-    except AuthenticationError:
-        raise AuthenticationError(
-            "OAuth token refresh failed - authentication expired. Please re-authenticate:\n    halinuxcompanion oauth"
+        # Exchange the authorization code for access and refresh tokens.
+        storage.oauth_tokens = OAuthTokens.model_validate(
+            await self._request_token(
+                session,
+                "exchange",
+                {
+                    "grant_type": "authorization_code",
+                    "code": result["code"],
+                },
+            )
         )
-    storage.save_oauth_tokens(new_tokens)
-    logger.info("OAuth token refreshed successfully")
-    return new_tokens
+        print("\nAuthentication successful! Tokens saved.")

@@ -1,5 +1,4 @@
 ha_url = "http://homeassistant.local:8123/"
-ha_token = "mysuperlongtoken"  # Optional - can use OAuth instead via: halinuxcompanion --oauth
 device_id = "computername"
 device_name = "whatever you want can be left empty"
 manufacturer = "whatever you want can be left empty"
@@ -8,12 +7,12 @@ local_http_host = "192.168.1.15"
 local_http_port = 8400
 refresh_interval = 15
 loglevel = "INFO"
-storage_backend = "auto"  # "file", "libsecret", or "auto" (tries libsecret first)
+storage_backend = "libsecret"  # "file" or "libsecret"
 
 # Hardware configuration
 [hardware.battery]
 enabled = true
-implementation = "psutil"  # or "upower" for more detailed battery information
+implementation = "upower"  # or "psutil" as less rich fallback
 
 [hardware.network]
 enabled = true

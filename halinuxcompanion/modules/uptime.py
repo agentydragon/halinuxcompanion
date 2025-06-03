@@ -7,14 +7,14 @@ import time
 
 import psutil
 
-from ...module_base import (
+from ..module_base import (
     DeviceClass,
     Module,
     PerPieceUpdateMixin,
     Sensor,
     StateClass,
 )
-from ...module_config import UptimeConfig
+from ..module_config import UptimeConfig
 
 logger = logging.getLogger(__name__)
 

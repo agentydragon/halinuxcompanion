@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from aiohttp import ClientError
 
@@ -27,15 +28,8 @@ class SensorManager:
     _last_sensor_ids: set[str] = field(default_factory=set)
     _last_full_log_time: float = field(default_factory=lambda: asyncio.get_event_loop().time())
 
-    async def update_sensors(self) -> bool:
-        """Update all sensors with Home Assistant
-
-        :return: True if the update was successful, False otherwise
-        """
-        # Skip update if no sensors
-        if not self.sensors:
-            return True
-
+    async def update_sensors(self):
+        """Update all sensors with Home Assistant"""
         self.update_counter += 1
 
         # Update all modules (which update their sensors directly)
@@ -45,59 +39,43 @@ class SensorManager:
         )
 
         # Check for sensor changes
-        current_sensor_ids = {s.unique_id for s in self.sensors}
-        added = current_sensor_ids - self._last_sensor_ids
-        removed = self._last_sensor_ids - current_sensor_ids
+        current_ids = {s.unique_id for s in self.sensors}
+        added = current_ids - self._last_sensor_ids
+        removed = self._last_sensor_ids - current_ids
 
         # Log based on what changed
-        prefix = f"Sensors update {self.update_counter}"
-        current_time = asyncio.get_event_loop().time()
-        hours_since_last_full_log = (current_time - self._last_full_log_time) / 3600
+        prefix = f"Sensor update {self.update_counter}: "
+        now = asyncio.get_event_loop().time()
+        time_since_last_full_log = now - self._last_full_log_time
 
-        if added or removed or hours_since_last_full_log >= 1:
-            # Log full list if changes or every hour
-            if added:
-                logger.info(f"{prefix}: Added sensors: {' '.join(added)}")
-            if removed:
-                logger.info(f"{prefix}: Removed sensors: {' '.join(removed)}")
+        if added:
+            logger.info(f"{prefix}Added sensors: {' '.join(added)}")
+        if removed:
+            logger.info(f"{prefix}Removed sensors: {' '.join(removed)}")
+        if time_since_last_full_log >= 3600:
+            logger.info(
+                f"{prefix}Full sensor list ({len(self.sensors)} total): {' '.join(s.unique_id for s in self.sensors)}"
+            )
+            self._last_full_log_time = now
+        elif added or removed:
+            logger.info(f"{prefix}Total {len(self.sensors)} sensors")
 
-            if hours_since_last_full_log >= 1:
-                logger.info(
-                    f"{prefix}: Full sensor list ({len(self.sensors)} total): {' '.join(s.unique_id for s in self.sensors)}"
-                )
-                self._last_full_log_time = current_time
-            else:
-                logger.info(f"{prefix}: Total {len(self.sensors)} sensors")
-
-            self._last_sensor_ids = current_sensor_ids
-        else:
-            # Just log the count for regular updates
-            logger.debug(f"{prefix}: Updating {len(self.sensors)} sensors")
+        self._last_sensor_ids = current_ids
 
         try:
             res = await self.api.webhook_post(
                 {
                     "type": "update_sensor_states",
-                    "data": [
-                        {
-                            "attributes": sensor.attributes,
-                            "icon": sensor.icon,
-                            "state": sensor.state,
-                            "type": sensor.type,
-                            "unique_id": sensor.unique_id,
-                        }
-                        for sensor in self.sensors
-                    ],
+                    "data": [sensor.to_update_dict() for sensor in self.sensors],
                 }
             )
         except ClientError as e:
-            logger.exception(f"{prefix} failed with {e=}")
-            return False
+            logger.exception(f"{prefix}failed with {e=}")
+            return
         if res.ok or res.status == SC_REGISTER_SENSOR:
-            logger.info(f"{prefix} successful")
-            return True
-        logger.error(f"{prefix} failed with {res.status=}")
-        return False
+            logger.info(f"{prefix}successful")
+            return
+        logger.error(f"{prefix}failed with status {res.status}")
 
     async def discover_and_register_sensors(self) -> None:
         """Discover and register sensors."""
@@ -110,20 +88,16 @@ class SensorManager:
             self.sensors.extend(await module_instance.discover_sensors())
 
         if not self.sensors:
-            logger.warning("No sensors discovered! Check sensor configuration and system capabilities.")
+            logger.warning("No sensors discovered! Check configuration and system capabilities.")
             return
 
         logger.info(f"Discovered {len(self.sensors)} sensors: {' '.join(sensor.unique_id for sensor in self.sensors)}")
 
         # Register all discovered sensors
-        await self._register_sensors()
+        await asyncio.gather(*[self._register_sensor(sensor) for sensor in self.sensors])
 
         # Register D-Bus handlers for each sensor
         await asyncio.gather(*[register_sensor_dbus_handlers(sensor, self.dbus) for sensor in self.sensors])
-
-    async def _register_sensors(self) -> None:
-        """Register all sensors with Home Assistant."""
-        await asyncio.gather(*[self._register_sensor(sensor) for sensor in self.sensors])
 
     async def _register_sensor(self, sensor: Sensor) -> None:
         """Register a single sensor with Home Assistant."""
@@ -137,3 +111,17 @@ class SensorManager:
             raise RuntimeError(f"Sensor registration failed for {sensor.unique_id} with {res.status=}")
 
         logger.info(f"Sensor registration successful: {sensor.unique_id}")
+
+    async def get_sensor_states(self) -> list[dict[str, Any]]:
+        """Get current sensor states without triggering updates."""
+        return [
+            {
+                "unique_id": sensor.unique_id,
+                "name": sensor.name,
+                "state": sensor.state,
+                "state_str": sensor.state_str,
+                "icon": sensor.icon,
+                "attributes": sensor.attributes,
+            }
+            for sensor in sorted(self.sensors, key=lambda s: s.unique_id)
+        ]

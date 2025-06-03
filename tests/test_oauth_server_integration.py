@@ -24,18 +24,11 @@ def event_loop():
 
 
 @pytest.fixture
-async def server() -> AsyncGenerator[Server, None]:
-    """Create a test server with automatic port assignment."""
-    server = Server("localhost", 0)
+async def server(unused_tcp_port: int) -> AsyncGenerator[Server, None]:
+    """Create a test server with an unused port."""
+    server = Server("localhost", unused_tcp_port)
     async with server:
         yield server
-
-
-@pytest.fixture
-async def server_port(server: Server) -> int:
-    """Get the server's assigned port."""
-    # The port is only available after the server is started (server fixture runs first)
-    return server.port
 
 
 @pytest.fixture
@@ -46,24 +39,13 @@ async def http_session() -> AsyncGenerator[ClientSession, None]:
 
 
 @pytest.fixture
-def oauth_callback_url(server_port: int) -> Callable[[dict[str, str]], str]:
-    """Create OAuth callback URL builder."""
-
-    def build_url(params: dict[str, str]) -> str:
-        query_string = urlencode(params)
-        return f"http://localhost:{server_port}/auth/callback?{query_string}"
-
-    return build_url
-
-
-@pytest.fixture
 def make_oauth_request(
-    http_session: ClientSession, oauth_callback_url: Callable[[dict[str, str]], str]
+    http_session: ClientSession, server: Server
 ) -> Callable[[dict[str, str]], Awaitable[ClientResponse]]:
     """Create a function to make OAuth callback requests."""
 
     async def _make_request(params: dict[str, str]) -> ClientResponse:
-        url = oauth_callback_url(params)
+        url = f"http://localhost:{server.port}/auth/callback?{urlencode(params)}"
         return await http_session.get(url)
 
     return _make_request

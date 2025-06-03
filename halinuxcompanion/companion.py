@@ -4,20 +4,22 @@ import logging
 import platform
 import secrets
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiohttp
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .constants import DEFAULT_NOTIFIER_PORT, SC_INTEGRATION_DELETED, SC_OK
+from .constants import SC_INTEGRATION_DELETED, SC_OK
 from .models import RegistrationData
 from .module_config import ModulesConfig
 from .paths import get_state_file_path
 from .secret_storage import SecretStorageBackend
+from .utils import validate_url_scheme
 
 if TYPE_CHECKING:
-    from halinuxcompanion.api import API
+    from .api import API, Server
 
 
 class CommandConfig(BaseModel):
@@ -39,15 +41,14 @@ class CompanionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ha_url: str
-    ha_token: str | None = None
     device_id: str
     device_name: str | None
     manufacturer: str | None
     model: str | None
     # Local HTTP listener configuration for OAuth callbacks and push notifications
-    local_http_port: int = Field(default=DEFAULT_NOTIFIER_PORT)
+    local_http_port: int = 8400
     local_http_host: str
-    refresh_interval: int = 15
+    refresh_interval: int = 15  # seconds
     hardware: ModulesConfig
     notifications: NotificationServiceConfig
     storage_backend: SecretStorageBackend = Field(
@@ -60,8 +61,6 @@ class CompanionConfig(BaseModel):
     @classmethod
     def validate_ha_url(cls, v: str) -> str:
         """Validate Home Assistant URL is safe and uses http/https."""
-        from .utils import validate_url_scheme
-
         if not validate_url_scheme(v):
             raise ValueError("Invalid URL. Only 'http' and 'https' schemes are allowed for security reasons.")
         return v
@@ -162,78 +161,18 @@ class Companion:
         return self.config.local_http_host
 
     @property
-    def http_port(self) -> int:
-        """Get the port for the local HTTP listener (notifications and OAuth)."""
-        return self.config.local_http_port
-
-    @property
-    def refresh_interval(self) -> int:
-        """Get the refresh interval in seconds."""
-        return self.config.refresh_interval
-
-    @property
     def ha_url(self) -> str:
         """Get the base URL for Home Assistant."""
         return self.config.ha_url.rstrip("/")
 
     @property
-    def device_id(self) -> str:
-        """Get the unique device ID."""
-        # TODO: Revisit this device_id which must be unique, used for notification events
-        return self.config.device_id or platform.node()
-
-    @property
-    def device_name(self) -> str:
-        """Get the name of the device."""
-        return self.config.device_name or platform.node()
-
-    @property
     def companion_version(self) -> str:
-        """Get the companion version."""
-        return "0.1.0"
-
-    async def register(self, api: "API"):
-        """Register the companion with Home Assistant with retry logic.
-
-        :param api: API instance for communication
-        :param max_retries: Maximum number of registration attempts
-        :return: registration_data if successful
-        :raises: Exception if registration fails after all retries
-        """
-        push_token = self.load_or_generate_push_token()
-        app_data = {
-            "push_token": push_token,
-            "push_url": f"http://{self.http_host}:{self.http_port}/notify",
-        }
-        payload = {
-            "device_id": self.device_id,
-            "app_id": self.app_id,
-            "app_name": self.app_name,
-            "app_version": self.companion_version,
-            "device_name": self.device_name,
-            "manufacturer": self.config.manufacturer or platform.system(),
-            "model": self.config.model or "Computer",
-            "os_name": platform.system(),
-            "os_version": platform.release(),
-            "supports_encryption": False,
-            "app_data": app_data,
-        }
-
+        """Get the companion version from package metadata."""
         try:
-            res = await api.post("/api/mobile_app/registrations", json=payload)
-            if not res.ok:
-                raise RuntimeError(f"Device registration failed with {res.status}: {await res.text()}")
-        except (aiohttp.ClientError, asyncio.TimeoutError):
-            logger.exception("Device registration failed")
-            raise
-
-        registration_data = RegistrationData.model_validate(await res.json())
-        logger.info(f"Device registration successful: {registration_data}")
-
-        self.state.registration_data = registration_data
-        # State is automatically saved when properties are set
-
-        return registration_data
+            return version("halinuxcompanion")
+        except PackageNotFoundError:
+            # Fallback for development environments where package might not be installed
+            return "0.1.0-dev"
 
     def load_or_generate_push_token(self) -> str:
         if not self.state.push_token:
@@ -241,7 +180,7 @@ class Companion:
             self.state.push_token = secrets.token_urlsafe(32)
         return self.state.push_token
 
-    async def load_or_register(self, api: "API") -> RegistrationData:
+    async def load_or_register(self, api: "API", server: "Server") -> RegistrationData:
         """
         Load registration data from disk or register the companion APP
 
@@ -259,4 +198,37 @@ class Companion:
                 raise RuntimeError(f"Failed to get config via webhook {res.status=}")
 
         logger.info("Registration data not found or needing re-registration, registering device")
-        return await self.register(api)  # type: ignore[no-any-return]
+
+        # Register the companion with Home Assistant with retry logic.
+        payload = {
+            # TODO: Revisit this device_id which must be unique, used for notification events
+            "device_id": self.config.device_id or platform.node(),
+            "app_id": self.app_id,
+            "app_name": self.app_name,
+            "app_version": self.companion_version,
+            "device_name": self.config.device_name or platform.node(),
+            "manufacturer": self.config.manufacturer or platform.system(),
+            "model": self.config.model or "Computer",
+            "os_name": platform.system(),
+            "os_version": platform.release(),
+            "supports_encryption": False,
+            "app_data": {
+                "push_token": self.load_or_generate_push_token(),
+                "push_url": server.notify_endpoint,
+            },
+        }
+
+        try:
+            res = await api.post("/api/mobile_app/registrations", json=payload)
+            if not res.ok:
+                raise RuntimeError(f"Device registration failed with {res.status}: {await res.text()}")
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            logger.exception("Device registration failed")
+            raise
+
+        registration_data = RegistrationData.model_validate(await res.json())
+        logger.info(f"Device registration successful: {registration_data}")
+
+        self.state.registration_data = registration_data
+        # State is automatically saved when properties are set
+        return registration_data

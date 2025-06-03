@@ -1,14 +1,11 @@
 """Hierarchical module configuration models."""
 
-import re
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 if TYPE_CHECKING:
     from halinuxcompanion.module_base import Module
-
-MAC_RE = re.compile(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 
 
 class ModuleConfig(BaseModel):
@@ -43,14 +40,9 @@ class NetworkConfig(ModuleConfig):
 class CPUConfig(ModuleConfig):
     """Configuration for CPU module."""
 
-    # Always shows usage_percent and frequency
-
 
 class MemoryConfig(ModuleConfig):
     """Configuration for memory module."""
-
-    # Always shows usage_percent, used_mb, available_mb
-    # TODO: Expose more precise units - psutil returns bytes, we could expose as kB/MB/GB with proper unit
 
 
 class CameraConfig(ModuleConfig):
@@ -62,8 +54,6 @@ class CameraConfig(ModuleConfig):
 
 class LidConfig(ModuleConfig):
     """Configuration for lid module."""
-
-    # Single binary_sensor for lid open/closed
 
 
 Mac = Annotated[
@@ -86,8 +76,6 @@ class BluetoothConfig(ModuleConfig):
 
 class UptimeConfig(ModuleConfig):
     """Configuration for uptime module."""
-
-    # Single sensor showing system uptime
 
 
 class TemperatureConfig(ModuleConfig):

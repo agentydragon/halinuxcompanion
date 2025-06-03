@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from ...module_base import DeviceClass, Module, Sensor, StateClass
-from ...module_config import BatteryConfig
+from halinuxcompanion.module_base import DeviceClass, Module, Sensor, StateClass
+from halinuxcompanion.module_config import BatteryConfig
+
 from .provider import BatteryData
 from .psutil import PsutilBatteryProvider
 from .upower import UPowerBatteryProvider

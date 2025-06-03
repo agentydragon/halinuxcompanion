@@ -6,15 +6,8 @@ import glob
 import logging
 from pathlib import Path
 
-from ...module_base import (
-    DeviceClass,
-    Module,
-    ModulePiece,
-    PerPieceUpdateMixin,
-    Sensor,
-    SensorType,
-)
-from ...module_config import LidConfig
+from ..module_base import BinarySensor, DeviceClass, Module, ModulePiece, PerPieceUpdateMixin, Sensor
+from ..module_config import LidConfig
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +15,15 @@ logger = logging.getLogger(__name__)
 class LidPiece(ModulePiece):
     """Represents a laptop lid."""
 
-    def __init__(self, lid_path: Path, is_closed_sensor: Sensor):
+    def __init__(self, lid_path: Path):
         super().__init__("lid")
         self.lid_path = lid_path
-        self.is_closed_sensor = is_closed_sensor
+        self.is_closed_sensor = BinarySensor(
+            unique_id=f"lid:{lid_path}",
+            name="Lid Closed",
+            device_class=DeviceClass.OPENING,
+            icon="mdi:laptop",
+        )
 
     async def update(self) -> None:
         """Update lid state."""
@@ -77,14 +75,6 @@ class LidModule(PerPieceUpdateMixin, Module):
             self._module_pieces.append(
                 piece := LidPiece(
                     path,
-                    is_closed_sensor=Sensor(
-                        unique_id=f"lid:{path}",
-                        type=SensorType.BINARY_SENSOR,
-                        name="Lid Closed",
-                        device_class=DeviceClass.OPENING,
-                        icon="mdi:laptop",
-                        state_class=None,  # Binary sensors don't have state_class
-                    ),
                 )
             )
             return piece.get_sensors()

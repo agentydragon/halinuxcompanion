@@ -2,6 +2,7 @@
 
 from enum import IntEnum
 
+from dbus_next.signature import Variant
 from pydantic import BaseModel, Field
 
 
@@ -53,8 +54,6 @@ class NotificationHints(BaseModel):
 
         Returns dict suitable for D-Bus with only non-None values.
         """
-        from dbus_next.signature import Variant
-
         hints = {}
 
         if self.urgency is not None:

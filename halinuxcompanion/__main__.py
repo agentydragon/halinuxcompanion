@@ -4,7 +4,6 @@ import logging
 import sys
 import textwrap
 from pathlib import Path
-from typing import Any
 
 import toml
 from aiohttp import ClientSession, ClientTimeout
@@ -16,10 +15,8 @@ from .dbus import Dbus
 from .module_base import DeviceClass, Module, Sensor
 from .module_config import ModulesConfig
 from .notifier import Notifier
-from .oauth import OAuthFlow
 from .paths import get_default_config_path
 from .secret_storage import FileSecretStorage, LibSecretStorage, SecretStorage, SecretStorageBackend
-from .secret_storage.file import check_file_permissions
 from .sensor import SensorManager
 
 
@@ -48,10 +45,6 @@ def load_config(file: Path) -> CompanionConfig:
             config: CompanionConfig = CompanionConfig.model_validate(data)
         except toml.TomlDecodeError:
             sys.exit(f"Config file parse error in {file}")
-
-    # Check file permissions if it contains a token
-    if config.ha_token:
-        check_file_permissions(file)
 
     return config
 
@@ -118,32 +111,7 @@ async def cleanup_sensors(companion: Companion) -> None:
     print("\nActive sensor IDs that WILL be kept:")
     for sensor_id in sorted(current_sensor_ids):
         print(f"  ✓ {sensor_id}")
-
-    print("\n" + "=" * 50)
-    print("CLEANUP OPTIONS:")
-    print("=" * 50)
-
-    print("\n(a) Currently unused sensors:")
-    print("    - Sensors that exist in HA but are NOT in the active list above")
-    print("    - These will never receive updates from this companion instance")
-
-    print("\n(b) Stale sensors (not updated for >30 days):")
-    print("    - Sensors that haven't been updated in over 30 days")
-    print("    - May indicate old/renamed sensors from previous configurations")
-
-    print("\n" + "=" * 50)
-    print("TO VIEW AND DELETE SENSORS:")
-    print("=" * 50)
-
-    # Get Home Assistant URL for direct link; TODO: unclear if OK with moves etc
-    print(f"\n1. Open: {companion.ha_url}/config/devices")
-    print(f"2. Search for device: '{companion.device_name}'")
-    print("3. Click on the device to see all entities")
-    print("4. Look for entities NOT in the active list above")
-    print("5. Check 'Last updated' timestamp for each entity")
-    print("6. Delete unwanted entities using the delete button")
-
-    print("\nNOTE: Future versions will automate this process with:")
+    print("\n\nTODO: Future versions will auto-cleanup sensors with:")
     print("  - Automatic detection of orphaned sensors")
     print("  - Last update timestamps for each sensor")
     print("  - Bulk deletion with confirmation prompt")
@@ -210,64 +178,20 @@ async def setup_and_run_service(
     # Initialize dbus connections
     bus = await Dbus.create()
 
-    # Set up device info for status page
-    server.set_device_info(
-        {
-            "device_name": companion.device_name,
-            "device_id": companion.device_id,
-            "version": companion.companion_version,
-            "ha_url": companion.ha_url,
-        }
-    )
-
-    # Set up sensor state provider that only reads current state
-    sensor_manager: SensorManager | None = None  # Will be set after sensor discovery
-
-    async def get_sensor_states() -> list[dict[str, Any]]:
-        """Get current sensor states without triggering updates."""
-        if sensor_manager is None:
-            return []
-        if not sensor_manager.sensors:
-            return []
-
-        # Return all sensors in a flat list, sorted by unique_id
-        sensor_data = []
-        for sensor in sorted(sensor_manager.sensors, key=lambda s: s.unique_id):
-            sensor_data.append(
-                {
-                    "unique_id": sensor.unique_id,
-                    "name": sensor.name,
-                    "state": sensor.state,
-                    "state_str": sensor.state_str,
-                    "icon": sensor.icon,
-                    "attributes": sensor.attributes,
-                }
-            )
-        return sensor_data
-
-    server.set_sensor_state_provider(get_sensor_states)
-
     # Print the status page URL
     print("\n" + "=" * 60)
     print("🏠 Home Assistant Linux Companion is running!")
     print("=" * 60)
     if args.expose_sensor_state:
-        print(f"\n📊 View sensor status at: http://{companion.http_host}:{companion.http_port}/")
+        print(f"📊 Sensor status page at: {server.base}")
     else:
-        print("\n📊 Sensor status page disabled (use --expose-sensor-state to enable)")
-    print(f"🔔 Notifications endpoint: http://{companion.http_host}:{companion.http_port}/notify")
-    print(f"🔐 OAuth callback: http://{companion.http_host}:{companion.http_port}/auth/callback")
-    print("\n" + "=" * 60 + "\n")
+        print("📊 Sensor status page disabled (use --expose-sensor-state to enable)")
+    print("" + "=" * 60 + "\n")
 
     # Register sensors - assign to the nonlocal variable
     sensor_manager = SensorManager(api=api, dbus=bus, module_config=config.hardware)
-
-    try:
-        await sensor_manager.discover_and_register_sensors()
-
-    except Exception:
-        logger.critical("Sensor registration failed", exc_info=True)
-        raise
+    server.set_sensor_state_provider(sensor_manager.get_sensor_states)
+    await sensor_manager.discover_and_register_sensors()
 
     # Initialize the notifier which implies the webserver and the dbus interface
     if config.notifications.enabled:
@@ -285,18 +209,17 @@ async def setup_and_run_service(
     # Loop forever updating sensors.
     while True:
         await sensor_manager.update_sensors()
-        await asyncio.sleep(companion.refresh_interval)
+        await asyncio.sleep(companion.config.refresh_interval)
 
 
 async def main() -> None:
-    """Main function
-    The program is fairly simple, data is sent and received to/from Home Assistant over HTTP
-    Sensors:
+    """
+    Data is sent and received to/from Home Assistant over HTTP Sensors:
         - Data is collected from sensors and sent to Home Assistant.
     Notifications:
-        - Sent from Home Assistant to the application via embeded webserver, this are sent to the desktop using Dbus.
-        - Actions are triggered in dbus listened by the application. Some are handled locally others are handled by Home
-          Assistant, events are relayed to it as expected (closed and action).
+    - Sent from Home Assistant to the application via embeded webserver, this are sent to the desktop using Dbus.
+    - Actions are triggered in dbus listened by the application. Some are handled locally others are handled by Home
+      Assistant, events are relayed to it as expected (closed and action).
     """
     args = commandline()
     config = load_config(args.config)
@@ -311,26 +234,29 @@ async def main() -> None:
     # Companion objet where configuration is stored
     companion = Companion(config)
 
-    # Create shared session and server for all operations
-    # Set a reasonable timeout for all HTTP operations (30 seconds total, 5 seconds for connection)
-    timeout = ClientTimeout(total=30, connect=5)
     async with (
-        ClientSession(timeout=timeout) as session,
-        Server(companion.http_host, companion.http_port, expose_sensor_state=args.expose_sensor_state) as server,
+        # Create shared session and server for all operations
+        # Set a reasonable timeout for all HTTP operations (30 seconds total, 5 seconds for connection)
+        ClientSession(timeout=ClientTimeout(total=30, connect=5)) as session,
+        Server(
+            companion.config.local_http_host,
+            companion.config.local_http_port,
+            expose_sensor_state=args.expose_sensor_state,
+        ) as server,
     ):
-        # Handle OAuth separately (doesn't need API)
+        api = API(
+            instance_url=companion.ha_url.rstrip("/"),
+            session=session,
+            storage=storage,
+            oauth_client_id=server.base,
+            oauth_redirect_uri=server.base + "/auth/callback",
+        )
         if args.command == "oauth":
-            await OAuthFlow(companion.ha_url, redirect_port=companion.http_port).run(storage, server, session)
+            await api._oauth_flow().run(storage, server, session)
             print("\nOAuth authentication successful.")
             return
 
-        # All other commands need API setup
-        api = API(
-            instance_url=companion.ha_url,
-            storage=storage,
-            session=session,
-        )
-        await companion.load_or_register(api)
+        await companion.load_or_register(api, server)
         api.registration = companion.state.registration_data
 
         if args.command == "sensor-states":
@@ -340,18 +266,6 @@ async def main() -> None:
         if args.command == "cleanup-sensors":
             await cleanup_sensors(companion)
             return
-
-        # Default behavior: run the service
-        # Check if we have any authentication configured
-        if not api.has_valid_auth():
-            logger.critical(
-                "No valid authentication found!\n\n"
-                "Please configure authentication using one of these methods:\n"
-                "1. Add 'ha_token' to your config file with a long-lived access token\n"
-                "   See: https://www.home-assistant.io/docs/authentication/#your-account-profile\n"
-                "2. Run OAuth authentication: halinuxcompanion oauth\n"
-            )
-            sys.exit(1)
 
         await setup_and_run_service(companion, api, server, config, args)
 

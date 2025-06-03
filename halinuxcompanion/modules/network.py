@@ -6,16 +6,8 @@ import logging
 
 import psutil
 
-from ...module_base import (
-    DeviceClass,
-    Module,
-    ModulePiece,
-    PerPieceUpdateMixin,
-    Sensor,
-    SensorType,
-    StateClass,
-)
-from ...module_config import NetworkConfig
+from ..module_base import BinarySensor, DeviceClass, Module, ModulePiece, PerPieceUpdateMixin, Sensor, StateClass
+from ..module_config import NetworkConfig
 
 logger = logging.getLogger(__name__)
 
@@ -86,22 +78,23 @@ class NetworkModule(PerPieceUpdateMixin, Module):
             piece = NetworkInterfacePiece(iface)
             self._module_pieces.append(piece)
 
-            def _sensor(id, name, **kwargs):
+            def _name(name: str) -> str:
                 if len(available_interfaces) > 1:
                     name = f"{name} ({iface})"
+                return name
+
+            def _sensor(id, name, **kwargs):
                 return Sensor(
                     unique_id=f"net:{piece.module_id}:{id}",
-                    name=name,
+                    name=_name(name),
                     **kwargs,
                 )
 
             if self.config.show_status:
-                piece.status_sensor = _sensor(
-                    id="status",
-                    type=SensorType.BINARY_SENSOR,
-                    name="Status",
+                piece.status_sensor = BinarySensor(
+                    unique_id=f"net:{piece.module_id}:status",
+                    name=_name("Status"),
                     device_class=DeviceClass.CONNECTIVITY,
-                    state_class=None,  # Binary sensors don't have state_class
                 )
 
             if self.config.show_counters:

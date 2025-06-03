@@ -42,7 +42,7 @@ class LibSecretStorage(SecretStorage):
             },
         )
 
-    def _get_attributes(self, secret_type: str) -> dict[str, str]:
+    def _attributes(self, secret_type: str) -> dict[str, str]:
         """Get attributes for secret lookup."""
         return {
             "application": self.APP_ID,
@@ -50,71 +50,44 @@ class LibSecretStorage(SecretStorage):
             "type": secret_type,
         }
 
-    def _store_password(self, label: str, secret_type: str, password: str) -> None:
+    def _store(self, label: str, secret_type: str, password: str) -> None:
         """Store a password in the keyring."""
         Secret.password_store_sync(
             self.schema,
-            self._get_attributes(secret_type),
+            self._attributes(secret_type),
             Secret.COLLECTION_DEFAULT,
             label,
             password,
             None,
         )
 
-    def _lookup_password(self, secret_type: str) -> str | None:
+    def _lookup(self, secret_type: str) -> str | None:
         """Look up a password from the keyring."""
         result = Secret.password_lookup_sync(
             self.schema,
-            self._get_attributes(secret_type),
+            self._attributes(secret_type),
             None,
         )
         return result  # type: ignore[no-any-return]
 
-    def _clear_password(self, secret_type: str) -> None:
-        """Clear a password from the keyring."""
-        Secret.password_clear_sync(
-            self.schema,
-            self._get_attributes(secret_type),
-            None,
-        )
-
-    def load_oauth_tokens(self) -> OAuthTokens | None:
+    @property
+    def oauth_tokens(self) -> OAuthTokens | None:
         """Load OAuth tokens from keyring."""
-        try:
-            secret = self._lookup_password("oauth")
-            if not secret:
-                return None
-            return OAuthTokens.model_validate(json.loads(secret))
-        except (json.JSONDecodeError, ValueError):
-            logger.exception("Error loading OAuth tokens from libsecret")
+        if not (secret := self._lookup("oauth")):
             return None
+        return OAuthTokens.model_validate(json.loads(secret))
 
-    def save_oauth_tokens(self, tokens: OAuthTokens) -> None:
+    @oauth_tokens.setter
+    def oauth_tokens(self, tokens: OAuthTokens) -> None:
         """Save OAuth tokens to keyring."""
-        self._store_password(
-            "Home Assistant OAuth Tokens",
-            "oauth",
-            tokens.model_dump_json(),
-        )
-        logger.info("OAuth tokens saved to system keyring")
+        self._store("Home Assistant OAuth Tokens", "oauth", tokens.model_dump_json())
 
-    def delete_oauth_tokens(self) -> None:
-        """Delete OAuth tokens from keyring."""
-        self._clear_password("oauth")
-
-    def load_long_lived_token(self) -> str | None:
+    @property
+    def long_lived_token(self) -> str | None:
         """Load long-lived token from keyring."""
-        return self._lookup_password("long_lived_token")
+        return self._lookup("long_lived_token")
 
-    def save_long_lived_token(self, token: str) -> None:
+    @long_lived_token.setter
+    def long_lived_token(self, token: str) -> None:
         """Save long-lived token to keyring."""
-        self._store_password(
-            "Home Assistant Long-Lived Token",
-            "long_lived_token",
-            token,
-        )
-        logger.info("Long-lived token saved to system keyring")
-
-    def delete_long_lived_token(self) -> None:
-        """Delete long-lived token from keyring."""
-        self._clear_password("long_lived_token")
+        self._store("Home Assistant Long-Lived Token", "long_lived_token", token)

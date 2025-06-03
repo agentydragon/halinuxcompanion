@@ -6,8 +6,8 @@ import logging
 
 import psutil
 
-from ...module_base import DeviceClass, Module, Sensor, StateClass
-from ...module_config import MemoryConfig
+from ..module_base import DeviceClass, Module, Sensor, StateClass
+from ..module_config import MemoryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +49,12 @@ class MemoryModule(Module):
             self.used_sensor.set_ok(mem.used)
             self.available_sensor.set_ok(mem.available)
         except (OSError, RuntimeError) as e:
-            self.usage_percent_sensor.set_error(e, "Failed to read memory info")
-            self.used_sensor.set_error(e, "Failed to read memory info")
-            self.available_sensor.set_error(e, "Failed to read memory info")
+            for sensor in (
+                self.usage_percent_sensor,
+                self.used_sensor,
+                self.available_sensor,
+            ):
+                sensor.set_error(e, "Failed to read memory info")
 
     async def discover_sensors(self) -> list[Sensor]:
         """Discover all sensors for memory."""

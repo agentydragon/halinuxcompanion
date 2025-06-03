@@ -6,14 +6,8 @@ import logging
 
 import psutil
 
-from ...module_base import (
-    DeviceClass,
-    Module,
-    PerPieceUpdateMixin,
-    Sensor,
-    StateClass,
-)
-from ...module_config import CPUConfig
+from ..module_base import DeviceClass, Module, PerPieceUpdateMixin, Sensor, StateClass
+from ..module_config import CPUConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +38,9 @@ class CPUModule(PerPieceUpdateMixin, Module):
         return [self.usage_sensor, self.frequency_sensor]
 
     async def update_all_sensors(self) -> None:
-        # Use interval=0 for non-blocking call. This gives CPU usage since last call,
-        # which is good for periodic updates. For the first call, it may return 0.0.
         try:
+            # Use interval=0 for non-blocking call. This gives CPU usage since last call,
+            # which is good for periodic updates. For the first call, it may return 0.0.
             self.usage_sensor.set_ok(psutil.cpu_percent(interval=0))
         except (OSError, RuntimeError) as e:
             self.usage_sensor.set_error(e, "Failed to read CPU usage")
