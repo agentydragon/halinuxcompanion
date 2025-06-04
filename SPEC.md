@@ -33,6 +33,17 @@ using the mobile-app-specific webhook (which authenticates it to the server).
 After the initial registration, the app WILL NOT retain the OAuth access token.
 If the registration is lost, user will have to re-register again through a new OAuth flow.
 
+When run, app will:
+
+* If needed and running from a terminal, ask user to complete the OAuth registration flow.
+  * (If not running from terminal and no registration is found, exit with an error.)
+* Register sensors, do any other needed handshakes, start the embedded server.
+* Send initial state of all sensors.
+* Send sensor updates either on change (if possible) or periodically (for sensors that have to be polled).
+* Listen for notifications from the Home Assistant server and display them using the FreeDesktop.org notification spec.
+  (Or execute associated commands.)
+* Listen for notification actions from DBus and act on them (e.g., execute commands, open URLs, notify Home Assistant server).
+
 # Features to support
 
 ## Sensors
