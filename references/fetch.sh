@@ -8,7 +8,7 @@ git clone --depth=1 https://github.com/home-assistant/developers.home-assistant
 git clone --depth=1 https://github.com/home-assistant/companion.home-assistant
 
 # Bluez + DBus API ocs
-git clone --depth=1 https://github.com/RadiusNetworks/bluez
+git clone --depth=1 https://git.kernel.org/pub/scm/bluetooth/bluez.git bluez
 
 # UPower
 git clone --depth=1 https://gitlab.freedesktop.org/upower/upower

@@ -18,7 +18,7 @@ Under `/references`, you can find the following resources:
   * `.../homeassistant/components/notify_events`
 * `.../freedesktop_notification_spec.md`: FreeDesktop.org notification spec, which we'll use to display notifications.
 * `.../bluez`: BlueZ documentation, which we'll use to query Bluetooth devices,
-   particularly `.../doc/device-api.txt` and `.../doc/adapter-api.txt`.
+   particularly `.../doc/org.bluez.Device.rst` and `.../doc/org.bluez.Adapter.rst`.
 * `.../upower`: UPower documentation, which we'll use to query battery status,
    particularly `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.Device.xml`.
 
@@ -83,6 +83,8 @@ Bluetooth devices will be queried using BlueZ D-Bus API.
   * RSSI (signal strength)
   * Battery level (if available)
 
+Battery level can be read via the [org.bluez.Battery1](references/bluez/doc/org.bluez.Battery.rst) interface.
+
 ### Network interfaces
 
 * For each interface specified in config
@@ -134,7 +136,10 @@ including but not limited to:
     the `shutdown` command and run `systemctl poweroff`.
 * Executing actions in response to user actions on notifications
   * Including default action and one-of-several-actions buttons
-  * Actions supported include at least: opening URLs, sending events to Home Assistant
+  * Actions supported include at least:
+    * Opening URLs,
+    * Sending events to Home Assistant
+      * See: [Android app's NotificationActionReceiver.kt](references/android/app/src/main/kotlin/io/homeassistant/companion/android/notifications/NotificationActionReceiver.kt)
   * URL opening will be validated to avoid risky URLs
 * Notify Home Assistant server of notification dismissal
 * Custom icons on notifications
@@ -200,3 +205,5 @@ Process conversation: <https://developers.home-assistant.io/docs/api/native-app-
 
 Let's not support external authentication (<https://developers.home-assistant.io/docs/frontend/external-authentication>)
 or external bus (<https://developers.home-assistant.io/docs/frontend/external-bus>) for now.
+
+Might be interesting to connect more Bluetooth interfaces e.g. `org.bluez.MediaControl1` or `org.bluez.MediaPlayer1`.

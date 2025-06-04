@@ -1,0 +1,27 @@
+read SPEC.md.
+
+flesh out the internal design of the app, including:
+
+* which modules we'll have,
+* how will they depend on each other,
+* in which order will they be initialized,
+* how will they operate in various cases of presence/absence,
+* how will sensor updates be handled,
+* how will notifications work,
+* how will dbus notifications work,
+* how will registration work & be stored, etc etc
+
+write your full design into a file.
+
+no need to write any full impleemntations, for now just asking for a design of what components there will be and roughly how will they interact with each other.
+
+before designing, make sure to consult the full details of documentation of the HA mobile app API and all other APIs on which you are planning to depend.
+this is to make sure your plan and design actually align well with the expected client patterns.
+
+make sure you properly handle registering/unregistering DBus listeners too.
+
+for sections which expose a lot of sub-features, like e.g. notifications (dbus & HA + how they line up against each other and what will we support
+in their intersection), make sure you enumerate each sub feature and how will it be supported / anything that needs to be stated to make sure we come
+up with a good implementation.
+
+point out any places where you are uncertain or where you would need to gather more knowledge / read more references / run experiments.
