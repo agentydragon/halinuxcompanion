@@ -1,8 +1,17 @@
+# Home Assistant core
+git clone --depth=1 https://github.com/home-assistant/core
+
 # Home Assistant developers docs
 git clone --depth=1 https://github.com/home-assistant/developers.home-assistant
 
 # Home Assistant Companion docs
 git clone --depth=1 https://github.com/home-assistant/companion.home-assistant
+
+# Bluez + DBus API ocs
+git clone --depth=1 https://github.com/RadiusNetworks/bluez
+
+# UPower
+git clone --depth=1 https://gitlab.freedesktop.org/upower/upower
 
 # FreeDesktop Notification spec
 curl https://specifications.freedesktop.org/notification-spec/latest-single/ | \
