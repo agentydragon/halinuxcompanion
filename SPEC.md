@@ -1,21 +1,25 @@
-Write a Python implementation of the Home Assistant mobile app API.
+# halinuxcompanion
+
+Write a Python client for the Home Assistant mobile app API.
 
 # References
 
-* `/references/companion.home-assistant`: documentation of existing Home Assistant mobile apps.
-* `/references/android`: source code of the Home Assistant Android app.
-* `/references/developers.home-assistant`: Home Assistant developer documentation, particularly:
+Under `/references`, you can find the following resources:
+
+* `.../companion.home-assistant`: documentation of existing Home Assistant mobile apps.
+* `.../android`: source code of the Home Assistant Android app.
+* `.../developers.home-assistant`: Home Assistant developer documentation, particularly:
   * `.../docs/api/native-app-integration.md`, `.../docs/api/native-app-integration`:
     documentation of the native app API.
-* `/references/core`: Home Assistant core source code, particularly:
+* `.../core`: Home Assistant core source code, particularly:
   * `.../homeassistant/components/mobile_app`: source code of the mobile app integration.
   * `.../homeassistant/components/binary_sensor`: source code of the binary_sensor component.
   * `.../homeassistant/components/notify`: source code of the notify component.
   * `.../homeassistant/components/notify_events`
-* `/references/freedesktop_notification_spec.md`: FreeDesktop.org notification spec, which we'll use to display notifications.
-* `/references/bluez`: BlueZ documentation, which we'll use to query Bluetooth devices,
+* `.../freedesktop_notification_spec.md`: FreeDesktop.org notification spec, which we'll use to display notifications.
+* `.../bluez`: BlueZ documentation, which we'll use to query Bluetooth devices,
    particularly `.../doc/device-api.txt` and `.../doc/adapter-api.txt`.
-* `/references/upower`: UPower documentation, which we'll use to query battery status,
+* `.../upower`: UPower documentation, which we'll use to query battery status,
    particularly `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.Device.xml`.
 
 # Overview
@@ -23,8 +27,7 @@ Write a Python implementation of the Home Assistant mobile app API.
 Home Assistant mobile apps communicate with the Home Assistant server using a specific API,
 different from the standard Home Assistant REST API.
 
-The app must first *register* with the Home Assistant server.
-This will be done by commandline.
+The app must first *register* with the Home Assistant server. This will be done by commandline.
 
 User will provide the URL of their instance and the app will initiate an OAuth flow to obtain an access token.
 App will then use the token to issue the authenticated registration call. Henceforth, it will communicate only
@@ -50,12 +53,18 @@ When run, app will:
 
 * Each sensor can be force-disabled in app settings for privacy
   * e.g.: "do not expose any disk sensors"
-  * Force-disabled sensors will not be even registered with the server
+  * *Unlike* sensor disable function as specified in the mobile app API
+    (<https://developers.home-assistant.io/docs/api/native-app-integration/sensors#keeping-sensors-in-sync-with-home-assistant>),
+    force-disabled sensors will not be even registered with the server.
+    This is because even their names might be privacy-sensitive.
     * (TODO for later: deleting sensors we no longer expose)
+* Sensors will have nice appropriate icons, correct units of measurement,
+  entity categories (e.g., for diagnostics etc.), state classes, device classes.
+* Sensors will properly report unavailable states as appropriate.
 
 ### Battery
 
-Read via UPower DBus interface.
+Battery info will be read from UPower, probably via DBus interface.
 
 * General state (charging, discharging, full, empty)
 * Power consumption / charge speed, if available
@@ -74,11 +83,27 @@ Bluetooth devices will be queried using BlueZ D-Bus API.
   * RSSI (signal strength)
   * Battery level (if available)
 
+### Network interfaces
+
+* For each interface specified in config
+  * IP address - possible to enable/disable
+  * MAC address - possible to enable/disable
+  * Connection state (connected/disconnected)
+  * Signal strength (if available, e.g., Wi-Fi)
+  * TX/RX counters - possible to enable/disable
+* By default: all interfaces except obvious loopback/virtual/Docker/...
+
+### Location
+
+Use GNOME location service.
+
+Will be exposed through the separate *non-sensor* shared location+battery
+API call: https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#update-device-location
+
+Of course possible to disable with config.
+
 ### Other sensors
 
-* Location (GNOME location service)
-  * Exposed through the separate non-sensor shared location+battery API call
-  * Of course possible to disable with config
 * Temperature sensors (e.g., CPU, GPU, ...)
   * Individual sensors possible to turn on/off
 * RAM usage
@@ -93,19 +118,11 @@ Bluetooth devices will be queried using BlueZ D-Bus API.
 * Lid status (open/closed)
 * Activity (locked screen / inactive / active)
 
-## Network interfaces
-
-* For each interface specified in config
-  * IP address - possible to enable/disable
-  * MAC address - possible to enable/disable
-  * Connection state (connected/disconnected)
-  * Signal strength (if available, e.g., Wi-Fi)
-  * TX/RX counters - possible to enable/disable
-* By default: all interfaces except obvious loopback/virtual/Docker/...
-
 ## Notifications
 
-Home Assistant may send notifications to the app's embedded HTTP server.
+Home Assistant may send notifications to the app's embedded HTTP server - i.e.,
+app will register itself as `push_url` in registration `app_data` (
+<https://developers.home-assistant.io/docs/api/native-app-integration/notifications#enabling-cloud-push-notifications>).
 
 Notifications will be displayed using DBus + FreeDesktop.org notification spec.
 We will support the maximum set of features enabled by the intersection of it and Home Assistant notification features
@@ -124,36 +141,62 @@ including but not limited to:
 * Basic HTML formatting
 * Notification replacing
 
-## Other features
-
-* Sending location updates
-  * Including battery, if present
-  * Possible to enable/disable
-
 # Configuration
 
-Readable TOML file in XDG standard directories. Using `xdg-base-dirs` library for paths.
+Readable TOML file in XDG standard directories.
 
 # Models / libraries / general
 
 Implementation will have closed enums for sensor types. Boolean sensors / non-boolean sensors will be checked against their allowed sensor types
 (e.g.: "boolean - opening" = OK, "boolean - battery" = NOT OK).
 
-Authentication tokens (e.g., webhook ID) stored securely - i.e., Python `keyring` library.
+Sensors updated lazily via getting state change notification (e.g., through DBus) if possible rather than poll.
 
-Sensors updated lazily via getting state change notification (e.g., through DBus)
-if possible rather than poll.
+* Optional dependencies:
+  * If notification feature is enabled (i.e., displaying them), then FreeDesktop.org notification service.
+  * If battery sensor is enabled, then UPower via DBus.
+  * If Bluetooth sensor is enabled, then BlueZ via DBus.
+  * If location sensor is enabled, then GNOME location service.
+* Hard dependencies:
+  * Some kind of HTTP server for embedded server.
+  * DBus via `dbus-next`.
+  * Authentication tokens (e.g., webhook ID) stored securely - i.e., Python `keyring` library.
+  * `xdg-base-dirs` library for paths.
+  * TOML library
+  * Library for querying system information - e.g., `psutil` or similar.
+  * Validated structures with Pydantic - minimal (if any) raw dicts etc.
 
-* DBus will use `dbus-next`.
-* Validated structures with Pydantic - minimal (if any) raw dicts etc.
-* One possible library we can use for querying system information is `psutil`.
+Other dependencies may be added as needed - feel free to suggest/ask.
 
 # Versions
 
 ## v1: Initial version
 
-* No support for libsodium encryption (as the mobile app API specifies it)
+* No support for libsodium encryption (as the mobile app API specifies it) - https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#implementing-encryption
 * No location updates / GPS
 * No zeroconf discovery
-* No support for dynamic enabled/disabled sensors negotiation via mobile app API --
-  only static configuration via config file which disables registering them altogether
+* No support for dynamic enabled/disabled sensors negotiation via mobile app API
+  (<https://developers.home-assistant.io/docs/api/native-app-integration/sensors#keeping-sensors-in-sync-with-home-assistant>)
+   -- only static configuration via config file which disables registering them altogether
+* No need to support special-case behavior when on home wifi: https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#short-note-on-instance-urls
+
+# TODO
+
+Maybe later:
+
+* Calling HA service actions: <https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#call-a-service-action>
+  * Only useful if we give user some way to trigger them - e.g., CLI, HTML UI or topbar icon.
+* User-fireable events: <https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#fire-an-event>
+
+# Notes
+
+Rendering templates: not sure if useful for anything (<https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#render-templates>).
+
+Not sure what `get_zones` is for: <https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#get-zones>
+
+Camera streaming: <https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#stream-camera>
+
+Process conversation: <https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#process-conversation>
+
+Let's not support external authentication (<https://developers.home-assistant.io/docs/frontend/external-authentication>)
+or external bus (<https://developers.home-assistant.io/docs/frontend/external-bus>) for now.
