@@ -21,6 +21,8 @@ Under `/references`, you can find the following resources:
    particularly `.../doc/org.bluez.Device.rst` and `.../doc/org.bluez.Adapter.rst`.
 * `.../upower`: UPower documentation, which we'll use to query battery status,
    particularly `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.Device.xml`.
+* `.../geoclue`: Geoclue documentation, which we'll use to query location,
+    particularly `.../interface/*.xml`.
 
 # Overview
 
@@ -97,7 +99,7 @@ Battery level can be read via the [org.bluez.Battery1](references/bluez/doc/org.
 
 ### Location
 
-Use GNOME location service.
+Use geoclue.
 
 Will be exposed through the separate *non-sensor* shared location+battery
 API call: https://developers.home-assistant.io/docs/api/native-app-integration/sending-data#update-device-location
@@ -146,6 +148,74 @@ including but not limited to:
 * Basic HTML formatting
 * Notification replacing
 
+### Notification references in Companion app docs
+
+Refer to companion app documentation for more details on features to support to the fullest extent possible:
+
+* <references/companion.home-assistant/docs/notifications/basic.md>
+  * Basic structure (parameters, ...)
+  * Opening URLs: relative to HA instance, full URLs, noop (`noAction`)
+  * Replacing notifications
+  * Clearing a past notification
+  * Notification timeouts
+  * HTML formatting
+  * Icons
+  * (Can we support sticky notifications? Persistent? Progress? Fine to skip in V1.)
+  * Likely not supported by DBus: grouping, chronometer, various obviously-mobile-specific, ...
+  * TODO, mark for later (not in V1): TTS
+* [Actionable notifications](references/companion.home-assistant/docs/notifications/actionable.md)
+  * Action: URL
+    * Validate schema etc.
+  * Not sure: can we support text input?
+* Attachments
+  * [Standard](references/companion.home-assistant/docs/notifications/attachments.md)
+    * Images, audio, video (as we can support)
+    * Not sure if we can support images and videos in notifications - maybe only in the app UI?
+  * [Dynamic](references/companion.home-assistant/docs/notifications/dynamic-content.md)
+    * Maps, camera streams, ... - not sure if supportable
+  * [Critical](references/companion.home-assistant/docs/notifications/critical.md)
+    * Let's leave out for now, should be easy to potentially add things like loud blaring etc.
+* [Notification Cleared](references/companion.home-assistant/docs/notifications/cleared.md) event reporting to Home Assistant server
+  * I think we should be able to support this
+* [Notification Commands](references/companion.home-assistant/docs/notifications/commands.md)
+  * Definitely not (includes ios/android-specific):
+    * clear_badge
+    * update_complications
+    * update_widgets
+    * command_activity
+    * command_app_lock
+    * command_auto_screen_brightness
+    * command_broadcast_intent
+    * command_ringer_mode
+    * remove_channel
+  * Not now:
+    * command_ble_transmitter
+    * command_beacon_monitor
+    * command_flashlight
+    * command_high_accuracy_mode
+    * command_launch_app
+    * command_screen_brightness_level
+    * command_screen_off_timeout
+    * command_screen_on
+    * command_stop_tts
+    * command_persistent_connection
+    * command_webview
+  * Yes:
+    * clear_notification
+    * request_location_update (if it makes sense with geoclue)
+    * command_update_sensors
+  * Not now but would be nice later:
+    * command_volume_level
+    * command_media
+    * command_dnd
+    * command_bluetooth
+* [Sounds](references/companion.home-assistant/docs/notifications/sounds.md)
+  * Let's not do in V1 but cool
+* [Local Push](references/companion.home-assistant/docs/notifications/local.md)
+  * Let's not use for now - this is "use local IP/host if on hom wifi" feature. It's cool but not needed for V1.
+* [Notification Received](references/companion.home-assistant/docs/notifications/received.md)
+  * Let's support
+
 # Configuration
 
 Readable TOML file in XDG standard directories.
@@ -161,10 +231,15 @@ Sensors updated lazily via getting state change notification (e.g., through DBus
   * If notification feature is enabled (i.e., displaying them), then FreeDesktop.org notification service.
   * If battery sensor is enabled, then UPower via DBus.
   * If Bluetooth sensor is enabled, then BlueZ via DBus.
-  * If location sensor is enabled, then GNOME location service.
+  * If location sensor is enabled, then geoclue via DBus.
+  * To check for session state, via DBus:
+    * `org.freedesktop.login1` - see `references/systemd/man/org.freedesktop.login1.xml`
+    * `org.freedesktop.ScreenSaver`
+    * `org.gnome.ScreenSaver`
+
 * Hard dependencies:
   * Some kind of HTTP server for embedded server.
-  * DBus via `dbus-next`.
+  * DBus via `dbus-fast`.
   * Authentication tokens (e.g., webhook ID) stored securely - i.e., Python `keyring` library.
   * `xdg-base-dirs` library for paths.
   * TOML library
@@ -207,3 +282,5 @@ Let's not support external authentication (<https://developers.home-assistant.io
 or external bus (<https://developers.home-assistant.io/docs/frontend/external-bus>) for now.
 
 Might be interesting to connect more Bluetooth interfaces e.g. `org.bluez.MediaControl1` or `org.bluez.MediaPlayer1`.
+
+Let's not use websockets for now.

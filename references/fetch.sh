@@ -13,6 +13,12 @@ git clone --depth=1 https://git.kernel.org/pub/scm/bluetooth/bluez.git bluez
 # UPower
 git clone --depth=1 https://gitlab.freedesktop.org/upower/upower
 
+# geoclue
+git clone --depth=1 https://gitlab.freedesktop.org/geoclue/geoclue
+
+# systemd
+git clone --depth=1 https://github.com/systemd/systemd
+
 # FreeDesktop Notification spec
 curl https://specifications.freedesktop.org/notification-spec/latest-single/ | \
     pandoc --from=html --to=markdown-fenced_divs-native_divs-raw_html-header_attributes-link_attributes-bracketed_spans-native_spans \
