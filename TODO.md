@@ -60,3 +60,12 @@
 - [ ] **Progress Notifications** - Support progress bars in notifications
   - XDG/D-Bus notification spec does NOT have standard progress bar support
   - Could potentially implement via custom hints or notification updates
+
+#### TODOs for human maintainer (Rai)
+
+```
+[project.urls]
+Homepage = "https://..."
+Repository = "https://..."
+Issues = "https://..."
+```

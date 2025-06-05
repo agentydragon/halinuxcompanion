@@ -23,6 +23,9 @@ Under `/references`, you can find the following resources:
    particularly `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.xml`, `.../dbus/org.freedesktop.UPower.Device.xml`.
 * `.../geoclue`: Geoclue documentation, which we'll use to query location,
     particularly `.../interface/*.xml`.
+* Some possible DBus libraries we may use (but we can also use others):
+    * `.../dbus-fast`
+    * `.../dasbus`
 
 # Overview
 

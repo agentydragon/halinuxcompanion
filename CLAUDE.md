@@ -8,10 +8,15 @@ Most of this remains yet to be implemented, so please update this file as you de
 
 ### Setup
 
-```bash
-pip install -e .
+This project requires a clean Python environment. We recommend using pyenv and virtualenv to avoid conflicts with system-wide packages (particularly pytest-socket which can interfere with DBus tests).
 
-# With dev dependencies
+```bash
+# Using pyenv (recommended)
+pyenv local 3.11.12  # or another Python 3.10+ version
+python -m venv venv
+source venv/bin/activate
+
+# Install with dev dependencies
 pip install -e ".[dev]"
 ```
 

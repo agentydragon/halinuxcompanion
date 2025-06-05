@@ -29,7 +29,7 @@ dependencies = [
     "pydantic>=2.10.4",
     "aiohttp>=3.9.5",
     "psutil>=5.8.0",
-    "dbus-fast>=2.20.0",
+    "dbus-fast>=1.90.0",
     "keyring>=24.0.0",
     "toml>=0.10.2",
     "xdg-base-dirs>=6.0.1",
@@ -41,30 +41,15 @@ dev = [
     "pytest>=7.4.3",
     "pytest-asyncio>=0.21.1",
     "pytest-aiohttp>=1.0.5",
-    "pytest-cov>=4.1.0",
-    "coverage>=7.3.2",
-    "tox>=4.11.3",
+    "pytest-timeout>=2.0.0",
     "black",
     "mypy",
     "types-tabulate",
-    "bandit[toml]>=1.7.5",
-    "safety>=3.0.0",
     "pre-commit>=3.5.0",
 ]
 
-[project.scripts]
-halinuxcompanion = "halinuxcompanion.__main__:run"
-
-[project.urls]
-Homepage = "https://github.com/benleb/halinuxcompanion"
-Repository = "https://github.com/benleb/halinuxcompanion"
-Issues = "https://github.com/benleb/halinuxcompanion/issues"
-
 [tool.setuptools.packages.find]
 include = ["halinuxcompanion*"]
-
-[tool.setuptools.package-data]
-halinuxcompanion = ["resources/*"]
 
 [tool.black]
 line-length = 120
@@ -74,25 +59,6 @@ target-version = ["py310"]
 testpaths = ["tests", "halinuxcompanion"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
-markers = [
-    "requires_hardware: marks tests as requiring real hardware (deselect with '-m \"not requires_hardware\"')",
-]
-
-[tool.coverage.run]
-branch = true
-source = ["halinuxcompanion"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-]
 
 [tool.ruff]
 line-length = 120
@@ -140,19 +106,14 @@ ignore = [
     "TRY003",  # long exception messages
     "ERA001",  # commented-out code (sometimes useful for debugging)
     "PLR0912",  # too many branches (sometimes necessary)
-    "PLW0603",  # global statement (needed for session management)
-    "G004",  # logging with f-string (more readable)
     "PTH123",  # open() vs Path.open() (both are fine)
     "T201",  # print statements (needed in CLI and scripts)
-    "RUF001",  # ambiguous unicode (not a real issue)
     "RUF003",  # ambiguous unicode in comments
-    "EXE001",  # shebang in non-executable (scratch files)
     "TID252",  # relative imports from parent (fine for internal packages)
     "TC001",   # move imports to TYPE_CHECKING (not always beneficial)
     "TC004",   # move imports out of TYPE_CHECKING (conflicts with TC001)
     "ARG001",  # unused function arguments (sometimes needed for interfaces)
     "A002",    # shadowing builtins (sometimes id is the best name)
-    "A005",    # module shadows stdlib (our secrets.py is fine)
     "B023",    # function doesn't bind loop variable (often false positive)
     "PTH207",  # prefer Path.glob (glob is fine)
     "RET504",  # unnecessary assignment before return (sometimes clearer)
@@ -160,14 +121,10 @@ ignore = [
     "RUF012",  # mutable class attributes (Pydantic handles these)
     "TRY300",  # consider returning exception (not always appropriate)
     "TRY301",  # raise within try (sometimes necessary)
-    "TRY401",  # redundant exception in logging.exception (false positives)
-    "B006",    # mutable default argument (handled properly)
     "B007",    # unused loop variable (sometimes intentional)
     "B904",    # raise without from inside except (not always needed)
-    "DTZ005",  # datetime without timezone (fixing these gradually)
+    "DTZ005",  # datetime without timezone
     "SIM105",  # use contextlib.suppress (explicit is clearer)
-    "UP038",   # use | in isinstance (not always clearer)
-    "EXE005",  # shebang with whitespace (minor issue)
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -201,20 +158,3 @@ exclude = [
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
-
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py310,py311,py312,py313
-skipsdist = True
-
-[testenv]
-deps =
-    -r requirements.txt
-    pytest
-    pytest-asyncio
-    pytest-aiohttp
-    pytest-cov
-    pytest-socket
-commands = pytest --cov=halinuxcompanion {posargs}
-"""

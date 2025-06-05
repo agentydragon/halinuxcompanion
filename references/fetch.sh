@@ -19,6 +19,12 @@ git clone --depth=1 https://gitlab.freedesktop.org/geoclue/geoclue
 # systemd
 git clone --depth=1 https://github.com/systemd/systemd
 
+# dbus-fast
+git clone --depth=1 https://github.com/Bluetooth-Devices/dbus-fast
+
+# dasbus
+git clone --depth=1 https://github.com/dasbus-project/dasbus
+
 # FreeDesktop Notification spec
 curl https://specifications.freedesktop.org/notification-spec/latest-single/ | \
     pandoc --from=html --to=markdown-fenced_divs-native_divs-raw_html-header_attributes-link_attributes-bracketed_spans-native_spans \
