@@ -232,17 +232,18 @@ Sensors updated lazily via getting state change notification (e.g., through DBus
 
 * Optional dependencies:
   * If notification feature is enabled (i.e., displaying them), then FreeDesktop.org notification service.
-  * If battery sensor is enabled, then UPower via DBus.
-  * If Bluetooth sensor is enabled, then BlueZ via DBus.
-  * If location sensor is enabled, then geoclue via DBus.
-  * To check for session state, via DBus:
-    * `org.freedesktop.login1` - see `references/systemd/man/org.freedesktop.login1.xml`
-    * `org.freedesktop.ScreenSaver`
-    * `org.gnome.ScreenSaver`
+  * Optional sensors talking to DBus services - iff sensor is enabled, dependency is hard:
+    * Battery: UPower
+    * Bluetooth: BlueZ
+    * Location: geoclue
+    * Session state:
+      * `org.freedesktop.login1` - see `references/systemd/man/org.freedesktop.login1.xml`
+      * `org.freedesktop.ScreenSaver`
+      * `org.gnome.ScreenSaver`
 
 * Hard dependencies:
   * Some kind of HTTP server for embedded server.
-  * DBus via `dbus-fast`.
+  * DBus via `dbus-fast` other library.
   * Authentication tokens (e.g., webhook ID) stored securely - i.e., Python `keyring` library.
   * `xdg-base-dirs` library for paths.
   * TOML library
