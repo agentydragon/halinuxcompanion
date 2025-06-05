@@ -20,19 +20,19 @@ halinuxcompanion/
 │   ├── client.py            # Home Assistant Mobile App API client
 │   ├── models.py            # Pydantic models for API data
 │   └── encryption.py        # Sodium encryption (future)
-├── sensors/
+├── modules/
 │   ├── __init__.py
-│   ├── base.py              # Base sensor classes
-│   ├── registry.py          # Sensor registry & lifecycle
-│   ├── battery.py           # Battery sensors (UPower)
-│   ├── bluetooth.py         # Bluetooth sensors (BlueZ)
-│   ├── network.py           # Network interface sensors
+│   ├── base.py              # Base module/sensor classes
+│   ├── registry.py          # Module registry & lifecycle
+│   ├── battery.py           # Battery module (UPower)
+│   ├── bluetooth.py         # Bluetooth module (BlueZ)
+│   ├── network.py           # Network interface module
 │   ├── cpu.py               # CPU usage, frequency, load
 │   ├── memory.py            # RAM and swap usage
 │   ├── disk.py              # Disk usage per partition
-│   ├── temperature.py       # Temperature sensors
-│   ├── lid.py               # Lid open/closed sensor
-│   └── activity.py          # Screen lock/activity sensor
+│   ├── temperature.py       # Temperature module
+│   ├── lid.py               # Lid open/closed module
+│   └── activity.py          # Screen lock/activity module
 ├── notifications/
 │   ├── __init__.py
 │   ├── handler.py           # Notification webhook handler
@@ -50,7 +50,7 @@ halinuxcompanion/
 ├── storage/
 │   ├── __init__.py
 │   ├── keyring.py           # Secure credential storage
-│   └── state.py             # Sensor states, notification mappings, rate limits
+│   └── state.py             # Module/sensor states, notification mappings, rate limits
 └── http_server.py           # HTTP server for all webhook endpoints
 ```
 
@@ -61,7 +61,7 @@ graph TD
     Main[__main__.py] --> Config[config.py]
     Main --> Registration[registration.py]
     Main --> API[api.client]
-    Main --> SensorRegistry[sensors.registry]
+    Main --> ModuleRegistry[modules.registry]
     Main --> HTTPServer[server.http_server]
 
     Registration --> Storage[storage.keyring]
@@ -70,21 +70,21 @@ graph TD
     API --> Models[api.models]
     API --> Storage
 
-    SensorRegistry --> BaseSensor[sensors.base]
-    SensorRegistry --> BatterySensor[sensors.battery]
-    SensorRegistry --> BluetoothSensor[sensors.bluetooth]
-    SensorRegistry --> NetworkSensor[sensors.network]
-    SensorRegistry --> CPUSensor[sensors.cpu]
-    SensorRegistry --> MemorySensor[sensors.memory]
-    SensorRegistry --> DiskSensor[sensors.disk]
-    SensorRegistry --> TemperatureSensor[sensors.temperature]
-    SensorRegistry --> LidSensor[sensors.lid]
+    ModuleRegistry --> BaseModule[modules.base]
+    ModuleRegistry --> BatteryModule[modules.battery]
+    ModuleRegistry --> BluetoothModule[modules.bluetooth]
+    ModuleRegistry --> NetworkModule[modules.network]
+    ModuleRegistry --> CPUModule[modules.cpu]
+    ModuleRegistry --> MemoryModule[modules.memory]
+    ModuleRegistry --> DiskModule[modules.disk]
+    ModuleRegistry --> TemperatureModule[modules.temperature]
+    ModuleRegistry --> LidModule[modules.lid]
 
-    BatterySensor --> DBusManager[dbus.manager]
-    BatterySensor --> UPower[dbus.upower]
+    BatteryModule --> DBusManager[dbus.manager]
+    BatteryModule --> UPower[dbus.upower]
 
-    BluetoothSensor --> DBusManager
-    BluetoothSensor --> BlueZ[dbus.bluez]
+    BluetoothModule --> DBusManager
+    BluetoothModule --> BlueZ[dbus.bluez]
 
     HTTPServer --> NotificationHandler[notifications.handler]
     HTTPServer --> API
@@ -116,12 +116,12 @@ graph TD
 4. **DBus Connection**
    - Connect to session bus
    - Initialize DBus manager
-   - Check for required services based on enabled sensors
+   - Check for required services based on enabled modules
 
-5. **Sensor Initialization**
-   - Create sensor instances based on configuration
+5. **Module Initialization**
+   - Create module instances based on configuration
    - Register sensors with Home Assistant
-   - Start sensor update loops/listeners
+   - Start module update loops/listeners
 
 6. **Webhook Server**
    - Start single HTTP server on configured port (default: 8123)
@@ -133,7 +133,12 @@ graph TD
    - Send initial sensor states
    - Enter event loop for sensor updates and notifications
 
-## Sensor Update Handling
+## Module/Sensor Update Handling
+
+Each module announces upon initialization from config the sensors it provides (including
+their HA metadata).
+
+Modules emit update events for its sensors.
 
 ### Push-based Updates (Preferred)
 
@@ -158,12 +163,12 @@ For sensors that support change notifications:
 
 For sensors without push notifications:
 
-1. **System Sensors** (CPU, RAM, disk)
+1. **System** (CPU, RAM, disk)
    - Poll at configurable intervals (default: 60s)
    - Use exponential backoff if sensor reading fails
    - Report unavailable if repeated failures
 
-2. **Temperature Sensors**
+2. **Temperature**
    - Poll at longer intervals (default: 300s) to avoid excessive filesystem access
    - Group updates to reduce API calls
 
@@ -317,11 +322,14 @@ for example, to inject system & session buses into sensor classes.
 Example sensor interface sketch:
 
 ```python
-class BatterySensor(BaseSensor):
-    def __init__(self, system_bus: MessageBus):
+class BatteryModule(BaseModule):
+    def __init__(self, config: BatteryConfig, system_bus: MessageBus):
         self.system_bus = system_bus
 
-    async def start(self):
+    def sensors(self) -> list[SensorRegistration]:
+        ...
+
+    async def start(self, update_listener: Callable[[SensorUpdate], None]):
         # Connect to system bus.
         #
         # List existing UPower batteries.
@@ -343,15 +351,27 @@ class BatterySensor(BaseSensor):
         # are enabled, we treat BlueZ as a hard dependency. If BlueZ service were
         # to disappear, we do not catch it - signals will just not arrive and we
         # may crash if we try to read it without a signal trigger.
+        #
+        # Fire update_listener with initial state and with every update.
 
     async def stop(self):
         """Unsubscribe from signals and clean up resources."""
+```
 
-    async def _on_battery_properties_changed(self):
-        ...
+Intended use:
 
-    async def _on_battery_changed(self, interface: str, changed: dict, invalidated: list):
-        """Handle battery property changes."""
+```python
+battery = BatteryModule(config, system_bus)
+
+sensors = battery.sensors()  # Get list of sensors to register with HA
+# ... fire registration with Home Assistant ...
+
+def update_listener(update: SensorUpdate):
+    # ... batch updates and send to Home Assistant ...
+
+await battery.start(update_listener)
+# ... main loop ...
+await battery.stop()
 ```
 
 ## Error Handling and Resilience
