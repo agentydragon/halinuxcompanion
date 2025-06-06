@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SensorType(str, Enum):
@@ -18,6 +18,7 @@ class DeviceClass(str, Enum):
     """Home Assistant sensor device classes."""
 
     BATTERY = "battery"
+    CONNECTIVITY = "connectivity"  # For binary sensors
     TEMPERATURE = "temperature"
     HUMIDITY = "humidity"
     PRESSURE = "pressure"
@@ -54,7 +55,7 @@ class SensorRegistration(BaseModel):
     """
 
     unique_id: str
-    type: str  # "sensor" or "binary_sensor"
+    type: SensorType
     name: str
     state: Any
     attributes: dict[str, Any] = Field(default_factory=dict)
@@ -65,12 +66,40 @@ class SensorRegistration(BaseModel):
     entity_category: EntityCategory | None = None
     disabled: bool = False
 
+    @field_validator("state")
+    def validate_state_type(cls, v, info):  # noqa: N805
+        """Validate state matches sensor type."""
+        sensor_type = info.data.get("type")
+        if sensor_type == SensorType.BINARY_SENSOR and v is not None and not isinstance(v, bool):
+            raise ValueError(f"Binary sensor state must be boolean, got {type(v).__name__}")
+        return v
+
+    @field_validator("device_class")
+    def validate_device_class(cls, v, info):  # noqa: N805
+        """Validate device class matches sensor type."""
+        if not v:
+            return v
+
+        sensor_type = info.data.get("type")
+
+        # Define valid combinations
+        binary_sensor_classes = {DeviceClass.CONNECTIVITY}
+
+        if sensor_type == SensorType.BINARY_SENSOR and v not in binary_sensor_classes:
+            raise ValueError(f"Device class {v} not valid for binary sensor")
+        if sensor_type == SensorType.SENSOR and v in binary_sensor_classes:
+            raise ValueError(f"Device class {v} not valid for regular sensor")
+
+        return v
+
 
 class SensorUpdate(BaseModel):
     """A sensor state update.
 
     For valid keys, see:
     https://developers.home-assistant.io/docs/api/native-app-integration/sensors#updating-a-sensor
+
+    This model maps 1:1 to the Home Assistant Mobile App API format.
     """
 
     unique_id: str

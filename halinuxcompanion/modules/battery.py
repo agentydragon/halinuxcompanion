@@ -2,10 +2,12 @@
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from enum import IntEnum
 from typing import Any
 
+import dbus_fast.errors
 from dbus_fast.aio import MessageBus
 
 from .base import (
@@ -93,7 +95,7 @@ class BatteryModule(BaseModule):
         return [
             SensorRegistration(
                 unique_id="battery_level",
-                type=SensorType.SENSOR.value,
+                type=SensorType.SENSOR,
                 name="Battery Level",
                 state=None,
                 icon="mdi:battery",
@@ -103,14 +105,14 @@ class BatteryModule(BaseModule):
             ),
             SensorRegistration(
                 unique_id="battery_state",
-                type=SensorType.SENSOR.value,
+                type=SensorType.SENSOR,
                 name="Battery State",
                 state="unknown",
                 icon="mdi:battery-unknown",
             ),
             SensorRegistration(
                 unique_id="battery_power",
-                type=SensorType.SENSOR.value,
+                type=SensorType.SENSOR,
                 name="Battery Power",
                 state=None,
                 icon="mdi:lightning-bolt",
@@ -121,7 +123,7 @@ class BatteryModule(BaseModule):
             ),
             SensorRegistration(
                 unique_id="battery_time_to_empty",
-                type=SensorType.SENSOR.value,
+                type=SensorType.SENSOR,
                 name="Battery Time to Empty",
                 state=None,
                 icon="mdi:timer-sand",
@@ -131,7 +133,7 @@ class BatteryModule(BaseModule):
             ),
             SensorRegistration(
                 unique_id="battery_time_to_full",
-                type=SensorType.SENSOR.value,
+                type=SensorType.SENSOR,
                 name="Battery Time to Full",
                 state=None,
                 icon="mdi:timer-sand",
@@ -150,17 +152,17 @@ class BatteryModule(BaseModule):
         try:
             introspect = await self._system_bus.introspect(UPOWER_NAME, UPOWER_ROOT)
             upower_proxy = self._system_bus.get_proxy_object(UPOWER_NAME, UPOWER_ROOT, introspect)
-            display_device_path = await upower_proxy.get_interface(UPOWER_NAME).call_get_display_device()
+            display_device_path = await upower_proxy.get_interface(UPOWER_NAME).call_get_display_device()  # type: ignore[attr-defined]
             display_obj = self._system_bus.get_proxy_object(
                 UPOWER_NAME, display_device_path, await self._system_bus.introspect(UPOWER_NAME, display_device_path)
             )
-        except Exception:
+        except dbus_fast.errors.DBusError:
             logger.exception("Failed to get or introspect display device")
             raise
 
         self._display_device_iface = display_obj.get_interface("org.freedesktop.UPower.Device")
         self._display_properties_iface = display_obj.get_interface("org.freedesktop.DBus.Properties")
-        self._display_properties_iface.on_properties_changed(self._handle_properties_changed)
+        self._display_properties_iface.on_properties_changed(self._handle_properties_changed)  # type: ignore[attr-defined]
         logger.debug("Initialized, calling update...")
         await self._update()
 
@@ -195,7 +197,7 @@ class BatteryModule(BaseModule):
             time_to_empty = await self._display_device_iface.get_time_to_empty()
             time_to_full = await self._display_device_iface.get_time_to_full()
 
-        except Exception:
+        except (dbus_fast.errors.DBusError, asyncio.TimeoutError, BrokenPipeError):
             logger.exception("Failed to get battery state")
             await self._send_unavailable_state()
             return
@@ -205,38 +207,45 @@ class BatteryModule(BaseModule):
         if power and state == UPowerDeviceState.CHARGING:
             power = -power
 
-        # Prepare all updates
-        updates = [
-            SensorUpdate(
-                unique_id="battery_level",
-                state=percentage if percentage > 0 else None,
-                icon=self._get_battery_icon(percentage, state),
-            ),
-            SensorUpdate(
-                unique_id="battery_state",
-                state=UPowerDeviceState.to_home_assistant_state(state),
-                icon=UPowerDeviceState.to_icon(state),
-            ),
-            SensorUpdate(unique_id="battery_power", state=power),
-            SensorUpdate(unique_id="battery_time_to_empty", state=time_to_empty if time_to_empty > 0 else None),
-            SensorUpdate(unique_id="battery_time_to_full", state=time_to_full if time_to_full > 0 else None),
-        ]
-
         # Send all updates
-        if self._update_listener is not None:
-            await asyncio.gather(*[self._update_listener(update) for update in updates])
+        await self._send_updates(
+            {
+                "battery_level": (
+                    percentage if percentage > 0 else None,
+                    self._get_battery_icon(percentage, state),
+                ),
+                "battery_state": (
+                    UPowerDeviceState.to_home_assistant_state(state),
+                    UPowerDeviceState.to_icon(state),
+                ),
+                "battery_power": (power, None),
+                "battery_time_to_empty": (time_to_empty if time_to_empty > 0 else None, None),
+                "battery_time_to_full": (time_to_full if time_to_full > 0 else None, None),
+            }
+        )
 
     async def _send_unavailable_state(self) -> None:
         """Send unavailable state for all sensors."""
-        updates = [
-            SensorUpdate(unique_id="battery_level", state=None),
-            SensorUpdate(unique_id="battery_state", state=None),
-            SensorUpdate(unique_id="battery_power", state=None),
-            SensorUpdate(unique_id="battery_time_to_empty", state=None),
-            SensorUpdate(unique_id="battery_time_to_full", state=None),
-        ]
-        if self._update_listener is not None:
-            await asyncio.gather(*[self._update_listener(update) for update in updates])
+        await self._send_updates(
+            {
+                "battery_level": (None, None),
+                "battery_state": (None, None),
+                "battery_power": (None, None),
+                "battery_time_to_empty": (None, None),
+                "battery_time_to_full": (None, None),
+            }
+        )
+
+    async def _send_updates(self, updates: Mapping[str, tuple[Any, str | None]]) -> None:
+        """Send sensor updates."""
+        if self._update_listener is None:
+            return
+        await asyncio.gather(
+            *[
+                self._update_listener(SensorUpdate(unique_id=unique_id, state=state, icon=icon or None))
+                for unique_id, (state, icon) in updates.items()
+            ]
+        )
 
     @classmethod
     def _get_battery_icon(cls, percentage: float, state: int) -> str:

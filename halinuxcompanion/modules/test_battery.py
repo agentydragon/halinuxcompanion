@@ -1,7 +1,6 @@
 """Unit tests for battery module."""
 
 import asyncio
-from dataclasses import dataclass, field
 
 import pytest
 from dbus_fast.aio import MessageBus
@@ -112,28 +111,6 @@ def test_battery_icon_selection(percentage, state, expected_icon):
     assert BatteryModule._get_battery_icon(percentage, state) == expected_icon
 
 
-@dataclass
-class CaptureUpdates:
-    """Helper class to capture sensor updates."""
-
-    updates: list[SensorUpdate] = field(default_factory=list)
-
-    async def __call__(self, update: SensorUpdate):
-        self.updates.append(update)
-
-    def __len__(self):
-        return len(self.updates)
-
-    def __iter__(self):
-        return iter(self.updates)
-
-
-@pytest.fixture
-def capture_updates():
-    """Fixture to capture sensor updates."""
-    return CaptureUpdates()
-
-
 @pytest.mark.asyncio
 async def test_battery_unavailable_state(module, mock_upower):
     """Test handling of unavailable battery (service failure)."""
@@ -163,11 +140,11 @@ async def test_battery_unavailable_state(module, mock_upower):
 
 
 @pytest.mark.asyncio
-async def test_battery_module_lifecycle(module, mock_upower):
+async def test_battery_module_lifecycle(module, mock_upower, capture_updates):
     """Test module start/stop lifecycle."""
     # Start and stop multiple times
     for _ in range(3):
-        capture_updates = CaptureUpdates()
+        capture_updates.clear()
         async with module.context(capture_updates):
             await asyncio.sleep(0.1)
 
