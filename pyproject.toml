@@ -38,6 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "PyHamcrest",
     "pytest>=7.4.3",
     "pytest-asyncio>=0.21.1",
     "pytest-aiohttp>=1.0.5",
@@ -125,12 +126,16 @@ ignore = [
     "B904",    # raise without from inside except (not always needed)
     "DTZ005",  # datetime without timezone
     "SIM105",  # use contextlib.suppress (explicit is clearer)
+    "G004", # logging format check - let's use f-strings
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["T20", "ARG002"]  # allow print and unused fixture arguments in tests
 "**/__main__.py" = ["T20"]  # allow print in CLI
 "**/test_*.py" = ["ARG002"]  # allow unused fixture arguments in test files
+# test_upower_service.py uses dbus-fast string literal type annotations
+# that are required for DBus interface generation but appear as undefined names
+"halinuxcompanion/test_upower_service.py" = ["F821"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["halinuxcompanion"]
@@ -152,6 +157,9 @@ ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 exclude = [
     "scratch/",
+    # test_upower_service.py uses dbus-fast string literal type annotations
+    # that are required for DBus interface generation but confuse mypy
+    "halinuxcompanion/test_upower_service.py",
 ]
 
 [tool.pydantic-mypy]
