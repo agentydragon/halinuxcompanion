@@ -1,0 +1,20 @@
+# Test configuration for HALinuxCompanion manual testing
+default_config:
+
+# Enable API for integration testing
+api:
+
+# Standard authentication only - no trusted networks
+# This ensures we properly test OAuth/token authentication
+homeassistant:
+  auth_providers:
+    - type: homeassistant
+
+# Logging configuration
+logger:
+  default: info
+  logs:
+    homeassistant.core: debug
+    homeassistant.auth: debug
+    homeassistant.components.api: debug
+    homeassistant.components.http: debug

@@ -1,0 +1,85 @@
+# Test Report - {{ test_id }}
+
+**Start Time:** {{ start_time }}
+**End Time:** {{ end_time }}
+**Duration:** {{ duration }}
+**Overall Status:** {% if failed_count == 0 %}✅ PASSED{% else %}❌ FAILED{% endif %}
+
+## Summary
+
+- **Total Scenarios:** {{ scenarios|length }}
+- **Passed:** {{ passed_count }}
+- **Failed:** {{ failed_count }}
+- **Pass Rate:** {{ "%.0%"|format(passed_count / (passed_count + failed_count)) }}
+
+## Environment
+
+- **OS:** {{ system.os }}
+- **Python:** {{ system.python }}
+- **Home Assistant:** (TODO collect)
+- **halinuxcompanion:** (TODO collect)
+
+## Scenario Results
+
+{% for name, result in scenarios.items() %}
+### {{ name }}: {% if result.passed %}✅ PASSED{% else %}❌ FAILED{% endif %}
+
+**Duration:** {{ result.duration | default('N/A') }}
+**Start:** {{ result.start_time }}
+**End:** {{ result.end_time }}
+
+{% if result.error %}
+**Error:** {{ result.error }}
+{% endif %}
+
+{% if result.steps %}
+#### Test Steps
+
+| Step | Status | Description | Notes |
+|------|--------|-------------|-------|
+{% for step in result.steps %}
+| {{ loop.index }} | {% if step.verified == true %}✓{% elif step.verified == false %}✗{% else %}⚠{% endif %} | {{ step.description | default('Step ' + loop.index|string) }} | {{ step.notes | default('-') }} |
+{% endfor %}
+{% endif %}
+
+{% if result.diagnostics %}
+#### Collected Diagnostics
+
+{% for diag_type, diag_data in result.diagnostics.items() %}
+- **{{ diag_type }}**: {{ diag_data.file_count | default(0) }} files collected
+  {% if diag_data.files %}
+  - Files: {{ diag_data.files | join(', ') }}
+  {% endif %}
+{% endfor %}
+{% endif %}
+
+{% if result.ha_data %}
+#### Home Assistant Sensor Data
+
+- **Entities Tracked:** {{ result.ha_data.entity_count | default(0) }}
+- **State Changes:** {{ result.ha_data.total_changes | default(0) }}
+- **Test Duration:** {{ result.ha_data.duration | default('N/A') }}
+
+{% if result.ha_data.entity_summary %}
+<details>
+<summary>Entity State Summary</summary>
+
+| Entity | Initial State | Final State | Changes |
+|--------|---------------|-------------|---------|
+{% for entity_id, summary in result.ha_data.entity_summary.items() %}
+| {{ entity_id }} | {{ summary.initial_state | default('N/A') }} | {{ summary.final_state | default('N/A') }} | {{ summary.change_count }} |
+{% endfor %}
+
+</details>
+{% endif %}
+{% endif %}
+
+{% endfor %}
+
+## Collected Files
+
+### Directory Structure ({{ results_dir }})
+
+{% for file in collected_files %}
+* [{{ file.path }}]({{ file.path }}): {{ file.size }}
+{% endfor %}

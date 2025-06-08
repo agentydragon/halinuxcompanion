@@ -8,7 +8,7 @@ Most of this remains yet to be implemented, so please update this file as you de
 
 ### Setup
 
-This project requires a clean Python environment. We recommend using pyenv and virtualenv to avoid conflicts with system-wide packages (particularly pytest-socket which can interfere with DBus tests).
+This project requires a clean Python environment. Use pyenv and virtualenv to avoid conflicts with system-wide packages (particularly pytest-socket which can interfere with DBus tests).
 
 ```bash
 # Using pyenv (recommended)
@@ -24,12 +24,15 @@ pip install -e ".[dev]"
 
 ```bash
 # Run tests
+source venv/bin/activate
 pytest
 ```
 
 ## Important Notes
 
 - Python 3.10+ required
+- Work in the ./venv virtual environment to avoid interference with system Python
+- Beware of packages like pytest-socket that can cause issues
 
 ## Code Style Guidelines
 

@@ -1,0 +1,55 @@
+Home Assistant Sensor Collection Summary
+=======================================
+Collection Time: {{ collection_time }}
+Test Start Time: {{ test_start_time | default('Not marked') }}
+
+Current States:
+{% for entity_id, state in states.items() %}
+  {{ entity_id }}:
+    State: {{ state.state | default('unknown') }}
+    Last Changed: {{ state.last_changed | default('unknown') }}
+{% if state.attributes %}
+    Attributes:
+{% for key, value in state.attributes.items() %}
+      {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+History Summary:
+{% for entity_id, history in history.items() %}
+  {{ entity_id }}: {{ history | length }} state changes
+{% if history %}
+    First: {{ history[0].last_changed | default('unknown') }}
+    Last: {{ history[-1].last_changed | default('unknown') }}
+    Transitions:
+{% for entry in history %}
+      [{{ loop.index }}] {{ entry.last_changed | default('unknown') }}: {{ entry.state | default('unknown') }}
+{% if (loop.index <= 5 or loop.index > (history|length - 5)) %}
+{% if entry.attributes and entry.attributes.battery_level %}
+          Battery: {{ entry.attributes.battery_level }}%
+{% endif %}
+{% if entry.attributes and entry.attributes.device_class %}
+          Class: {{ entry.attributes.device_class }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+Devices:
+{% for device_id, device in devices.items() %}
+  {{ device.name | default(device_id) }}:
+    Manufacturer: {{ device.manufacturer | default('Unknown') }}
+    Model: {{ device.model | default('Unknown') }}
+    SW Version: {{ device.sw_version | default('Unknown') }}
+
+{% endfor %}
+
+Total Summary:
+- States collected: {{ states | length }}
+- History entries: {{ history.values() | map('length') | sum }}
+- Devices found: {{ devices | length }}
+- Entities registered: {{ entities | length }}

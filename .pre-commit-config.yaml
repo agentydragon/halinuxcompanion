@@ -19,6 +19,7 @@ repos:
       - id: fix-byte-order-marker
       - id: name-tests-test
         args: ['--pytest-test-first']
+        exclude: ^tests/manual/
 
   # Ruff = linter + import sorter + formatter
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -40,6 +41,8 @@ repos:
           - types-Markdown
           - types-toml
           - types-tabulate
+          - types-requests
+          - types-click
           - pydantic>=2
 
   # Buildifier for Bazel files
