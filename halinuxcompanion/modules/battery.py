@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any
 
@@ -62,36 +63,17 @@ class UPowerDeviceState(IntEnum):
         }.get(state, "mdi:battery-unknown")
 
 
-class UPowerDeviceType(IntEnum):
-    """UPower device types from org.freedesktop.UPower.Device."""
-
-    UNKNOWN = 0
-    LINE_POWER = 1
-    BATTERY = 2
-    UPS = 3
-    MONITOR = 4
-    MOUSE = 5
-    KEYBOARD = 6
-    PDA = 7
-    PHONE = 8
-
-
+@dataclass
 class BatteryModule(BaseModule):
     """Module for battery monitoring via UPower."""
 
     def __init__(self, system_bus: MessageBus):
-        """Initialize battery module.
-
-        Args:
-            system_bus: System bus instance.
-        """
         self._system_bus = system_bus
         self._update_listener: UpdateListener | None = None
         self._display_device_iface: Any = None  # ProxyInterface from dbus-fast
         self._display_properties_iface: Any = None  # ProxyInterface from dbus-fast
 
     def sensors(self) -> list[SensorRegistration]:
-        """Return list of sensors this module provides."""
         return [
             SensorRegistration(
                 unique_id="battery_level",
@@ -152,9 +134,11 @@ class BatteryModule(BaseModule):
         try:
             introspect = await self._system_bus.introspect(UPOWER_NAME, UPOWER_ROOT)
             upower_proxy = self._system_bus.get_proxy_object(UPOWER_NAME, UPOWER_ROOT, introspect)
-            display_device_path = await upower_proxy.get_interface(UPOWER_NAME).call_get_display_device()  # type: ignore[attr-defined]
+            display_device_path = await upower_proxy.get_interface(UPOWER_NAME).call_get_display_device()
             display_obj = self._system_bus.get_proxy_object(
-                UPOWER_NAME, display_device_path, await self._system_bus.introspect(UPOWER_NAME, display_device_path)
+                UPOWER_NAME,
+                display_device_path,
+                await self._system_bus.introspect(UPOWER_NAME, display_device_path),
             )
         except dbus_fast.errors.DBusError:
             logger.exception("Failed to get or introspect display device")
@@ -162,7 +146,7 @@ class BatteryModule(BaseModule):
 
         self._display_device_iface = display_obj.get_interface("org.freedesktop.UPower.Device")
         self._display_properties_iface = display_obj.get_interface("org.freedesktop.DBus.Properties")
-        self._display_properties_iface.on_properties_changed(self._handle_properties_changed)  # type: ignore[attr-defined]
+        self._display_properties_iface.on_properties_changed(self._handle_properties_changed)
         logger.debug("Initialized, calling update...")
         await self._update()
 
@@ -219,8 +203,14 @@ class BatteryModule(BaseModule):
                     UPowerDeviceState.to_icon(state),
                 ),
                 "battery_power": (power, None),
-                "battery_time_to_empty": (time_to_empty if time_to_empty > 0 else None, None),
-                "battery_time_to_full": (time_to_full if time_to_full > 0 else None, None),
+                "battery_time_to_empty": (
+                    time_to_empty if time_to_empty > 0 else None,
+                    None,
+                ),
+                "battery_time_to_full": (
+                    time_to_full if time_to_full > 0 else None,
+                    None,
+                ),
             }
         )
 

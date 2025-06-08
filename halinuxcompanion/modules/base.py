@@ -1,6 +1,8 @@
 """Base classes for sensor modules."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Any, Protocol
 
@@ -138,3 +140,12 @@ class BaseModule(ABC):
     @abstractmethod
     async def stop(self) -> None:
         """Stop the module and clean up resources."""
+
+    @asynccontextmanager
+    async def context(self, update_listener: UpdateListener) -> AsyncIterator["BaseModule"]:
+        """Provide an async context manager for the module."""
+        try:
+            await self.start(update_listener)
+            yield self
+        finally:
+            await self.stop()

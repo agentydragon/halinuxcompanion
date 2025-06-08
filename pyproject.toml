@@ -55,7 +55,7 @@ dev = [
 include = ["halinuxcompanion*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "halinuxcompanion"]
+testpaths = ["halinuxcompanion"]
 python_files = ["test_*.py"]
 asyncio_mode = "auto"
 

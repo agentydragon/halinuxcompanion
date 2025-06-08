@@ -7,7 +7,7 @@ from dbus_fast.aio import MessageBus
 from hamcrest import assert_that, has_item, has_items, has_properties
 
 from halinuxcompanion.modules.base import DeviceClass, SensorUpdate
-from halinuxcompanion.modules.bluetooth import BluetoothModule
+from halinuxcompanion.modules.bluetooth import BluetoothDevice, BluetoothModule
 from halinuxcompanion.test_bluez_service import MockBlueZDaemon
 
 
@@ -261,4 +261,4 @@ async def test_bluetooth_unavailable_state(mock_bluez, capture_updates):
 )
 def test_bluetooth_battery_icon_selection(percentage, expected_icon):
     """Test battery icon selection based on percentage."""
-    assert BluetoothModule._get_battery_icon(percentage) == expected_icon
+    assert BluetoothDevice._get_battery_icon(percentage) == expected_icon

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import signal
 import sys
 
 import aiohttp
@@ -21,6 +22,69 @@ from halinuxcompanion.storage import delete_registration, load_registration
 logger = logging.getLogger(__name__)
 
 
+async def setup_modules(config, system_bus):
+    """Set up and return enabled modules."""
+    module_classes = {
+        "battery": (BatteryModule, [system_bus]),
+        "bluetooth": (BluetoothModule, [system_bus, config.bluetooth_device_macs]),
+    }
+
+    modules = []
+    for module_name, (module_class, args) in module_classes.items():
+        if config.modules.get(module_name):
+            modules.append(module_class(*args))
+            info_msg = f"{module_name.capitalize()} module enabled"
+            if module_name == "bluetooth":
+                info_msg += f" with {len(config.bluetooth_device_macs)} devices"
+            logger.info(info_msg)
+
+    return modules
+
+
+async def handle_shutdown(sig, shutdown_event, modules, system_bus):
+    """Handle shutdown signals gracefully."""
+    logger.info(f"Received signal {sig.name}, shutting down gracefully...")
+    shutdown_event.set()
+
+    # Stop all modules
+    logger.info("Stopping modules...")
+    try:
+        await asyncio.gather(*[module.stop() for module in modules], return_exceptions=True)
+    except Exception:
+        logger.exception("Error stopping modules")
+
+    # Disconnect from DBus
+    try:
+        system_bus.disconnect()
+        logger.info("Disconnected from DBus")
+    except Exception:
+        logger.exception("Error disconnecting from DBus")
+
+
+async def update_sender(update_queue, shutdown_event, client):
+    """Batch and send sensor updates."""
+    while not shutdown_event.is_set():
+        # Collect updates for batching
+        updates = []
+        deadline = asyncio.get_event_loop().time() + BATCH_WINDOW.total_seconds()
+
+        while asyncio.get_event_loop().time() < deadline and not shutdown_event.is_set():
+            try:
+                timeout = deadline - asyncio.get_event_loop().time()
+                update = await asyncio.wait_for(
+                    update_queue.get(), timeout=max(MIN_BATCH_TIMEOUT.total_seconds(), timeout)
+                )
+                updates.append(update)
+            except asyncio.TimeoutError:
+                break
+
+        if updates and not shutdown_event.is_set():
+            try:
+                await client.update_sensors(updates)
+            except aiohttp.ClientError:
+                logger.exception("Failed to send sensor updates")
+
+
 async def run_companion():
     """Run the companion app."""
     # Load config
@@ -38,20 +102,11 @@ async def run_companion():
     await system_bus.connect()
     logger.info("Connected to system DBus")
 
-    # Initialize modules
-    module_classes = {
-        "battery": (BatteryModule, [system_bus]),
-        "bluetooth": (BluetoothModule, [system_bus, config.bluetooth_device_macs]),
-    }
+    # Track running state for graceful shutdown
+    shutdown_event = asyncio.Event()
 
-    modules = []
-    for module_name, (module_class, args) in module_classes.items():
-        if config.modules.get(module_name):
-            modules.append(module_class(*args))
-            info_msg = f"{module_name.capitalize()} module enabled"
-            if module_name == "bluetooth":
-                info_msg += f" with {len(config.bluetooth_device_macs)} devices"
-            logger.info(info_msg)
+    # Initialize modules
+    modules = await setup_modules(config, system_bus)
 
     # Create API client
     async with create_api_client(registration) as client:
@@ -75,33 +130,24 @@ async def run_companion():
         await asyncio.gather(*[module.start(sensor_update_callback) for module in modules])
         logger.info("All modules started")
 
-        # Batch and send updates
-        async def update_sender():
-            """Batch and send sensor updates."""
-            while True:
-                # Collect updates for batching
-                updates = []
-                deadline = asyncio.get_event_loop().time() + BATCH_WINDOW.total_seconds()
+        # Register signal handlers
+        loop = asyncio.get_event_loop()
 
-                while asyncio.get_event_loop().time() < deadline:
-                    try:
-                        timeout = deadline - asyncio.get_event_loop().time()
-                        update = await asyncio.wait_for(
-                            update_queue.get(), timeout=max(MIN_BATCH_TIMEOUT.total_seconds(), timeout)
-                        )
-                        updates.append(update)
-                    except asyncio.TimeoutError:
-                        break
+        def create_shutdown_handler(sig_value):
+            """Create a shutdown handler for a specific signal."""
+            return lambda: asyncio.create_task(handle_shutdown(sig_value, shutdown_event, modules, system_bus))
 
-                if updates:
-                    try:
-                        await client.update_sensors(updates)
-                    except aiohttp.ClientError:
-                        logger.exception("Failed to send sensor updates")
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, create_shutdown_handler(sig))
 
-        # Run update sender
+        # Run update sender until shutdown
         logger.info("Starting update sender")
-        await update_sender()
+        try:
+            await update_sender(update_queue, shutdown_event, client)
+        except asyncio.CancelledError:
+            logger.info("Update sender cancelled")
+
+        logger.info("Shutdown complete")
 
 
 @click.group()

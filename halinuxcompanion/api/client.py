@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
@@ -15,18 +16,12 @@ from .models import Registration
 logger = logging.getLogger(__name__)
 
 
+@dataclass
 class MobileAppClient:
     """Client for Home Assistant Mobile App API."""
 
-    def __init__(self, registration: Registration, session: aiohttp.ClientSession):
-        """Initialize the client.
-
-        Args:
-            registration: The registration data from Home Assistant.
-            session: The aiohttp session to use for requests.
-        """
-        self.registration = registration
-        self.session = session
+    registration: Registration
+    session: aiohttp.ClientSession
 
     @property
     def webhook_url(self) -> str:
@@ -34,15 +29,14 @@ class MobileAppClient:
         return f"{self.registration.instance_url}/api/webhook/{self.registration.webhook_id}"
 
     async def register_sensors(self, sensors: list[SensorRegistration]) -> None:
-        """Register all sensors with Home Assistant.
-
-        Args:
-            sensors: List of sensors to register.
-        """
+        """Register all sensors with Home Assistant."""
         # Send registration for each sensor
         await asyncio.gather(
             *[
-                self._post_webhook("register_sensor", sensor.model_dump(exclude_none=True, by_alias=True))
+                self._post_webhook(
+                    "register_sensor",
+                    sensor.model_dump(exclude_none=True, by_alias=True),
+                )
                 for sensor in sensors
             ]
         )
@@ -57,7 +51,10 @@ class MobileAppClient:
 
         Note: SensorUpdate is designed to map 1:1 to the API format.
         """
-        await self._post_webhook("update_sensor_states", [update.model_dump(exclude_none=True) for update in updates])
+        await self._post_webhook(
+            "update_sensor_states",
+            [update.model_dump(exclude_none=True) for update in updates],
+        )
 
         # Log the actual updates for debugging
         for update in updates:
@@ -77,7 +74,6 @@ class MobileAppClient:
         async with self.session.post(
             self.webhook_url,
             json={"type": webhook_type, "data": data},
-            headers={"Content-Type": "application/json"},
             timeout=aiohttp.ClientTimeout(total=WEBHOOK_TIMEOUT.total_seconds()),
         ) as resp:
             resp.raise_for_status()

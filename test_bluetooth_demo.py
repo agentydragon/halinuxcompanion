@@ -34,6 +34,66 @@ class BluetoothDemo:
         if update.attributes:
             logger.info(f"  Attributes: {update.attributes}")
 
+    def _log_sensor_info(self, sensors):
+        """Log information about registered sensors."""
+        logger.info("\nRegistered sensors:")
+        for sensor in sensors:
+            logger.info(f"  - {sensor.name} ({sensor.unique_id})")
+            logger.info(f"    Type: {sensor.type}")
+            if sensor.unit_of_measurement:
+                logger.info(f"    Unit: {sensor.unit_of_measurement}")
+            if sensor.device_class:
+                logger.info(f"    Device class: {sensor.device_class}")
+
+    async def _simulate_device_scenarios(self, daemon):
+        """Simulate various device connection scenarios."""
+        logger.info("\n=== Disabling Bluetooth adapter ===")
+        await daemon.set_adapter_powered(False)
+        await asyncio.sleep(2)
+
+        logger.info("\n=== Re-enabling Bluetooth adapter ===")
+        await daemon.set_adapter_powered(True)
+        await asyncio.sleep(2)
+
+        logger.info("\n=== Connecting first device with RSSI ===")
+        await daemon.set_device_connected("AA:BB:CC:DD:EE:FF", True, rssi=-65)
+        await daemon.set_device_name("AA:BB:CC:DD:EE:FF", "My Headphones")
+        await asyncio.sleep(2)
+
+        logger.info("\n=== Setting battery level for first device ===")
+        await daemon.set_device_battery("AA:BB:CC:DD:EE:FF", 75)
+        await asyncio.sleep(2)
+
+        logger.info("\n=== Connecting second device ===")
+        await daemon.set_device_connected("11:22:33:44:55:66", True, rssi=-72)
+        await daemon.set_device_name("11:22:33:44:55:66", "Wireless Mouse")
+        await asyncio.sleep(2)
+
+        logger.info("\n=== Low battery warning on first device ===")
+        await daemon.set_device_battery("AA:BB:CC:DD:EE:FF", 15)
+        await asyncio.sleep(2)
+
+        logger.info("\n=== Disconnecting first device ===")
+        await daemon.set_device_connected("AA:BB:CC:DD:EE:FF", False)
+        await asyncio.sleep(2)
+
+    def _print_summary(self):
+        """Print summary of received updates."""
+        logger.info("\n=== Summary ===")
+        logger.info(f"Total updates received: {len(self.updates_received)}")
+
+        # Group updates by sensor
+        updates_by_sensor: dict[str, list[SensorUpdate]] = {}
+        for update in self.updates_received:
+            if update.unique_id not in updates_by_sensor:
+                updates_by_sensor[update.unique_id] = []
+            updates_by_sensor[update.unique_id].append(update)
+
+        for sensor_id, updates in sorted(updates_by_sensor.items()):
+            logger.info(f"\n{sensor_id}: {len(updates)} updates")
+            for i, update in enumerate(updates[-3:]):  # Show last 3 updates
+                logger.info(f"  [{i + 1}] State: {update.state}, Icon: {update.icon}")
+
     async def run(self):
         """Run the demo."""
         # Start mock BlueZ daemon
@@ -52,14 +112,7 @@ class BluetoothDemo:
 
             # Get sensor registrations
             sensors = self.bluetooth_module.sensors()
-            logger.info("\nRegistered sensors:")
-            for sensor in sensors:
-                logger.info(f"  - {sensor.name} ({sensor.unique_id})")
-                logger.info(f"    Type: {sensor.type}")
-                if sensor.unit_of_measurement:
-                    logger.info(f"    Unit: {sensor.unit_of_measurement}")
-                if sensor.device_class:
-                    logger.info(f"    Device class: {sensor.device_class}")
+            self._log_sensor_info(sensors)
 
             # Start the module
             await self.bluetooth_module.start(self.on_sensor_update)
@@ -69,35 +122,7 @@ class BluetoothDemo:
             await asyncio.sleep(1)
 
             # Simulate Bluetooth changes
-            logger.info("\n=== Disabling Bluetooth adapter ===")
-            await daemon.set_adapter_powered(False)
-            await asyncio.sleep(2)
-
-            logger.info("\n=== Re-enabling Bluetooth adapter ===")
-            await daemon.set_adapter_powered(True)
-            await asyncio.sleep(2)
-
-            logger.info("\n=== Connecting first device with RSSI ===")
-            await daemon.set_device_connected("AA:BB:CC:DD:EE:FF", True, rssi=-65)
-            await daemon.set_device_name("AA:BB:CC:DD:EE:FF", "My Headphones")
-            await asyncio.sleep(2)
-
-            logger.info("\n=== Setting battery level for first device ===")
-            await daemon.set_device_battery("AA:BB:CC:DD:EE:FF", 75)
-            await asyncio.sleep(2)
-
-            logger.info("\n=== Connecting second device ===")
-            await daemon.set_device_connected("11:22:33:44:55:66", True, rssi=-72)
-            await daemon.set_device_name("11:22:33:44:55:66", "Wireless Mouse")
-            await asyncio.sleep(2)
-
-            logger.info("\n=== Low battery warning on first device ===")
-            await daemon.set_device_battery("AA:BB:CC:DD:EE:FF", 15)
-            await asyncio.sleep(2)
-
-            logger.info("\n=== Disconnecting first device ===")
-            await daemon.set_device_connected("AA:BB:CC:DD:EE:FF", False)
-            await asyncio.sleep(2)
+            await self._simulate_device_scenarios(daemon)
 
             # Stop the module
             await self.bluetooth_module.stop()
@@ -107,20 +132,7 @@ class BluetoothDemo:
             bus.disconnect()
 
             # Summary
-            logger.info("\n=== Summary ===")
-            logger.info(f"Total updates received: {len(self.updates_received)}")
-
-            # Group updates by sensor
-            updates_by_sensor: dict[str, list[SensorUpdate]] = {}
-            for update in self.updates_received:
-                if update.unique_id not in updates_by_sensor:
-                    updates_by_sensor[update.unique_id] = []
-                updates_by_sensor[update.unique_id].append(update)
-
-            for sensor_id, updates in sorted(updates_by_sensor.items()):
-                logger.info(f"\n{sensor_id}: {len(updates)} updates")
-                for i, update in enumerate(updates[-3:]):  # Show last 3 updates
-                    logger.info(f"  [{i + 1}] State: {update.state}, Icon: {update.icon}")
+            self._print_summary()
 
 
 async def main():

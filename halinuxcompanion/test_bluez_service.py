@@ -1,4 +1,5 @@
 # mypy: ignore-errors
+# ruff: noqa: F821
 """Mock BlueZ service for testing Bluetooth module.
 
 This file uses dbus-fast string literal type annotations (like "s", "b", "n")
@@ -11,6 +12,7 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from dbus_fast import Message, MessageType, Variant
 from dbus_fast.aio import MessageBus
@@ -24,9 +26,13 @@ ADAPTER_PATH = "/org/bluez/hci0"
 
 
 class BlueZDevice(ServiceInterface):
-    """Mock BlueZ device implementation."""
+    """Mock BlueZ device implementation.
 
-    def __init__(self, address: str):
+    This can implement multiple interfaces (Device1 and optionally Battery1).
+    """
+
+    def __init__(self, address: str, has_battery: bool = False):
+        # We'll just use Device1 as the primary interface
         super().__init__("org.bluez.Device1")
         self._bus: MessageBus | None = None
         self._path: str = ""
@@ -40,7 +46,7 @@ class BlueZDevice(ServiceInterface):
         self._blocked = False
         self._rssi: int | None = None
         self._battery_percentage: int | None = None
-        self._has_battery = False
+        self._has_battery = has_battery
 
     @dbus_property(access=PropertyAccess.READ)
     def Address(self) -> "s":  # type: ignore[misc] # noqa: N802
@@ -232,6 +238,67 @@ class BlueZAdapter(ServiceInterface):
             await self._bus.send(msg)
 
 
+class ObjectManager(ServiceInterface):
+    """Mock DBus ObjectManager implementation."""
+
+    def __init__(self):
+        super().__init__("org.freedesktop.DBus.ObjectManager")
+        self._objects: dict[str, dict[str, dict[str, Any]]] = {}
+        self._bus: MessageBus | None = None
+
+    def add_object(self, path: str, interfaces: dict[str, dict[str, Any]]) -> None:
+        """Add an object to the manager."""
+        self._objects[path] = interfaces
+        if self._bus:
+            asyncio.create_task(self._emit_interfaces_added(path, interfaces))
+
+    def remove_object(self, path: str) -> None:
+        """Remove an object from the manager."""
+        if path not in self._objects:
+            return
+        interfaces = list(self._objects[path].keys())
+        self._objects.pop(path)
+        if self._bus:
+            asyncio.create_task(self._emit_interfaces_removed(path, interfaces))
+
+    @method()
+    async def GetManagedObjects(self) -> "a{oa{sa{sv}}}":  # type: ignore[misc] # noqa: N802, F722
+        """Return all managed objects."""
+        return self._objects
+
+    async def _emit_interfaces_added(self, path: str, interfaces: dict[str, dict[str, Any]]) -> None:
+        """Emit InterfacesAdded signal."""
+        if not self._bus:
+            return
+        await self._bus.send(
+            Message(
+                destination=None,
+                path="/",
+                interface="org.freedesktop.DBus.ObjectManager",
+                member="InterfacesAdded",
+                signature="oa{sa{sv}}",
+                body=[path, interfaces],
+                message_type=MessageType.SIGNAL,
+            )
+        )
+
+    async def _emit_interfaces_removed(self, path: str, interfaces: list[str]) -> None:
+        """Emit InterfacesRemoved signal."""
+        if not self._bus:
+            return
+        await self._bus.send(
+            Message(
+                destination=None,
+                path="/",
+                interface="org.freedesktop.DBus.ObjectManager",
+                member="InterfacesRemoved",
+                signature="oas",
+                body=[path, interfaces],
+                message_type=MessageType.SIGNAL,
+            )
+        )
+
+
 class MockBlueZDaemon:
     """Manages a mock BlueZ service on a private bus."""
 
@@ -243,6 +310,7 @@ class MockBlueZDaemon:
         self._adapter: BlueZAdapter | None = None
         self._devices: dict[str, BlueZDevice] = {}
         self._batteries: dict[str, BlueZBattery] = {}
+        self._object_manager: ObjectManager | None = None
 
         # Create some default devices
         self._create_default_devices()
@@ -297,11 +365,28 @@ class MockBlueZDaemon:
         self._bus = MessageBus(bus_address=self._bus_address)
         await self._bus.connect()
 
+        # Create and export ObjectManager at root
+        self._object_manager = ObjectManager()
+        self._object_manager._bus = self._bus
+        self._bus.export("/", self._object_manager)
+
         # Create and export adapter
         self._adapter = BlueZAdapter()
         self._adapter._bus = self._bus
         self._adapter._path = ADAPTER_PATH
         self._bus.export(ADAPTER_PATH, self._adapter)
+
+        # Add adapter to ObjectManager
+        adapter_interfaces = {
+            "org.bluez.Adapter1": {
+                "Address": Variant("s", self._adapter.Address),
+                "Name": Variant("s", self._adapter.Name),
+                "Alias": Variant("s", self._adapter.Alias),
+                "Powered": Variant("b", self._adapter.Powered),
+                "Discovering": Variant("b", self._adapter.Discovering),
+            }
+        }
+        self._object_manager.add_object(ADAPTER_PATH, adapter_interfaces)
 
         # Export devices
         for address, device in self._devices.items():
@@ -310,9 +395,30 @@ class MockBlueZDaemon:
             device._path = device_path
             self._bus.export(device_path, device)
 
+            # Build device interfaces for ObjectManager
+            device_interfaces = {
+                "org.bluez.Device1": {
+                    "Address": Variant("s", device.Address),
+                    "Name": Variant("s", device.Name),
+                    "Alias": Variant("s", device.Alias),
+                    "Connected": Variant("b", device.Connected),
+                    "Paired": Variant("b", device.Paired),
+                    "Bonded": Variant("b", device.Bonded),
+                    "Trusted": Variant("b", device.Trusted),
+                    "Blocked": Variant("b", device.Blocked),
+                    "RSSI": Variant("n", device.RSSI),
+                }
+            }
+
             # Export battery interface if available
             if address in self._batteries:
                 self._bus.export(device_path, self._batteries[address])
+                device_interfaces["org.bluez.Battery1"] = {
+                    "Percentage": Variant("y", self._batteries[address].Percentage)
+                }
+
+            # Add device to ObjectManager
+            self._object_manager.add_object(device_path, device_interfaces)
 
         # Request service name
         await self._bus.request_name(BLUEZ_SERVICE)
@@ -345,22 +451,141 @@ class MockBlueZDaemon:
         if address in self._devices:
             await self._devices[address].update_state(connected=connected, rssi=rssi)
 
+    async def add_adapter(self, path: str, address: str) -> None:
+        """Add a new adapter dynamically."""
+        if self._adapter:
+            return  # Already have an adapter
+
+        self._adapter = BlueZAdapter()
+        self._adapter._bus = self._bus
+        self._adapter._path = path
+        self._adapter._address = address
+        self._bus.export(path, self._adapter)
+
+        # Add to ObjectManager
+        adapter_interfaces = {
+            "org.bluez.Adapter1": {
+                "Address": Variant("s", self._adapter.Address),
+                "Name": Variant("s", self._adapter.Name),
+                "Alias": Variant("s", self._adapter.Alias),
+                "Powered": Variant("b", self._adapter.Powered),
+                "Discovering": Variant("b", self._adapter.Discovering),
+            }
+        }
+        self._object_manager.add_object(path, adapter_interfaces)
+
+    async def remove_adapter(self) -> None:
+        """Remove the adapter."""
+        if not self._adapter:
+            return
+
+        path = self._adapter._path
+        self._bus.unexport(path)
+        self._object_manager.remove_object(path)
+        self._adapter = None
+
+    async def add_device(
+        self,
+        adapter_path: str,
+        address: str,
+        alias: str | None = None,
+        connected: bool = False,
+        battery_percentage: int | None = None,
+    ) -> str:
+        """Add a new device dynamically."""
+        device = BlueZDevice(address)
+        if alias:
+            device._alias = alias
+            device._name = alias
+        device._connected = connected
+
+        device_path = f"{adapter_path}/dev_{address.replace(':', '_')}"
+        device._bus = self._bus
+        device._path = device_path
+        self._bus.export(device_path, device)
+        self._devices[address] = device
+
+        # Build device interfaces
+        device_interfaces = {
+            "org.bluez.Device1": {
+                "Address": Variant("s", device.Address),
+                "Name": Variant("s", device.Name),
+                "Alias": Variant("s", device.Alias),
+                "Connected": Variant("b", device.Connected),
+                "Paired": Variant("b", device.Paired),
+                "Bonded": Variant("b", device.Bonded),
+                "Trusted": Variant("b", device.Trusted),
+                "Blocked": Variant("b", device.Blocked),
+                "RSSI": Variant("n", device.RSSI),
+            }
+        }
+
+        # Add battery if specified
+        if battery_percentage is not None:
+            battery = BlueZBattery()
+            battery._percentage = battery_percentage
+            self._batteries[address] = battery
+            self._bus.export(device_path, battery)
+            device_interfaces["org.bluez.Battery1"] = {"Percentage": Variant("y", battery.Percentage)}
+
+        self._object_manager.add_object(device_path, device_interfaces)
+        return device_path
+
+    async def remove_device(self, device_path: str) -> None:
+        """Remove a device."""
+        # Find device by path
+        address = None
+        for addr, dev in self._devices.items():
+            if dev._path == device_path:
+                address = addr
+                break
+
+        if not address:
+            return
+
+        self._bus.unexport(device_path)
+        self._object_manager.remove_object(device_path)
+        del self._devices[address]
+        self._batteries.pop(address, None)
+
+    async def add_battery_to_device(self, device_path: str, percentage: int) -> None:
+        """Add battery interface to existing device."""
+        # Find device by path
+        address = None
+        for addr, dev in self._devices.items():
+            if dev._path == device_path:
+                address = addr
+                break
+
+        if not address or address in self._batteries:
+            return
+
+        battery = BlueZBattery()
+        battery._percentage = percentage
+        self._batteries[address] = battery
+        self._bus.export(device_path, battery)
+
+        # Emit InterfacesAdded for just the battery
+        battery_interfaces = {"org.bluez.Battery1": {"Percentage": Variant("y", battery.Percentage)}}
+        await self._object_manager._emit_interfaces_added(device_path, battery_interfaces)
+
     async def set_device_battery(self, address: str, percentage: int) -> None:
         """Set device battery level."""
         if address in self._batteries:
             await self._batteries[address].update_percentage(percentage)
             # Also emit device properties changed for battery
             if address in self._devices and self._devices[address]._bus:
-                msg = Message(
-                    destination=None,
-                    path=self._devices[address]._path,
-                    interface="org.freedesktop.DBus.Properties",
-                    member="PropertiesChanged",
-                    signature="sa{sv}as",
-                    body=["org.bluez.Battery1", {"Percentage": Variant("y", percentage)}, []],
-                    message_type=MessageType.SIGNAL,
+                await self._devices[address]._bus.send(
+                    Message(
+                        destination=None,
+                        path=self._devices[address]._path,
+                        interface="org.freedesktop.DBus.Properties",
+                        member="PropertiesChanged",
+                        signature="sa{sv}as",
+                        body=["org.bluez.Battery1", {"Percentage": Variant("y", percentage)}, []],
+                        message_type=MessageType.SIGNAL,
+                    )
                 )
-                await self._devices[address]._bus.send(msg)
 
     async def set_device_name(self, address: str, name: str) -> None:
         """Set device name/alias."""

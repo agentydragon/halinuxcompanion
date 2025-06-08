@@ -28,9 +28,7 @@ class OAuthHandler:
             instance_url: The Home Assistant instance URL.
         """
         self.instance_url = instance_url.rstrip("/")
-        self.auth_code: str | None = None
-        self.error: str | None = None
-        self._event = asyncio.Event()
+        self._future: asyncio.Future[str] = asyncio.Future()
 
     async def handle_callback(self, request: web.Request) -> web.Response:
         """Handle OAuth callback from Home Assistant.
@@ -42,16 +40,22 @@ class OAuthHandler:
             HTML response to show to the user.
         """
         if "error" in request.query:
-            self.error = request.query.get("error_description", "Unknown error")
-            self._event.set()
+            error_msg = request.query.get("error_description", "Unknown error")
+            self._future.set_exception(RuntimeError(f"OAuth error: {error_msg}"))
             return web.Response(
-                text=f"<html><body><h1>Error</h1><p>Authentication failed: {self.error}</p><p>You can close this window.</p></body></html>",
+                text=f"<html><body><h1>Error</h1><p>Authentication failed: {error_msg}</p><p>You can close this window.</p></body></html>",
                 content_type="text/html",
             )
 
-        self.auth_code = request.query.get("code")
-        self._event.set()
+        auth_code = request.query.get("code")
+        if not auth_code:
+            self._future.set_exception(RuntimeError("No authorization code received"))
+            return web.Response(
+                text="<html><body><h1>Error</h1><p>No authorization code received</p><p>You can close this window.</p></body></html>",
+                content_type="text/html",
+            )
 
+        self._future.set_result(auth_code)
         return web.Response(
             text="<html><body><h1>Success!</h1><p>Authentication successful. You can close this window.</p></body></html>",
             content_type="text/html",
@@ -66,18 +70,10 @@ class OAuthHandler:
         Raises:
             RuntimeError: If authentication fails.
         """
-        await self._event.wait()
-
-        if self.error:
-            raise RuntimeError(f"OAuth error: {self.error}")
-
-        if not self.auth_code:
-            raise RuntimeError("No authorization code received")
-
-        return self.auth_code
+        return await self._future
 
 
-async def register_device(instance_url: str, device_name: str) -> Registration:  # noqa: PLR0915
+async def register_device(instance_url: str, device_name: str) -> Registration:
     """Register this device with Home Assistant.
 
     Args:
@@ -134,39 +130,23 @@ async def register_device(instance_url: str, device_name: str) -> Registration: 
                 "client_id": callback_url,
             }
 
-            # Try the token endpoint, handling potential redirects
+            # Try the token endpoint, allowing redirects
             token_url = f"{instance_url}/auth/token"
 
-            # First, try with the original URL
             async with session.post(
                 token_url,
                 data=token_data,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                allow_redirects=False,
+                allow_redirects=True,
             ) as resp:
-                # If we get a redirect, update the instance URL and try again
-                if resp.status in (301, 302, 303, 307, 308):
-                    redirect_url = resp.headers.get("Location")
-                    if not redirect_url:
-                        raise RuntimeError(f"Got redirect response {resp.status} but no Location header")
+                resp.raise_for_status()
+                token_response = await resp.json()
 
-                    # Extract the base URL from the redirect
-                    parsed = urlparse(redirect_url)
+                # Update instance_url if we were redirected (e.g., HTTP->HTTPS)
+                if str(resp.url) != token_url:
+                    parsed = urlparse(str(resp.url))
                     instance_url = urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
-                    token_url = f"{instance_url}/auth/token"
-
-                    logger.info(f"Following redirect from {token_url} to {redirect_url}")
-                    # Retry with the redirected URL
-                    async with session.post(
-                        token_url,
-                        data=token_data,
-                        headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    ) as resp2:
-                        resp2.raise_for_status()
-                        token_response = await resp2.json()
-                else:
-                    resp.raise_for_status()
-                    token_response = await resp.json()
+                    logger.info(f"Updated instance URL after redirect: {instance_url}")
 
             access_token = token_response["access_token"]
             logger.info("Successfully obtained access token")

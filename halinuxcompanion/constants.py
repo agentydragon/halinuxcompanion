@@ -1,6 +1,7 @@
 """Constants for Home Assistant Linux Companion."""
 
 from datetime import timedelta
+from importlib.metadata import version
 
 # Timing constants
 BATCH_WINDOW = timedelta(seconds=0.1)
@@ -12,7 +13,7 @@ WEBHOOK_TIMEOUT = timedelta(seconds=30)
 # Application metadata
 APP_ID = "halinuxcompanion"
 APP_NAME = "HA Linux Companion"
-APP_VERSION = "0.1.0"
+APP_VERSION = version("halinuxcompanion")
 
 # Default configuration
 DEFAULT_WEBHOOK_PORT = 8123

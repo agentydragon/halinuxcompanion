@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 class Config:
     """Application configuration."""
 
-    device_name: str = platform.node()  # Default to hostname
+    device_name: str = field(default_factory=platform.node)  # Default to hostname
     modules: dict[str, bool] = field(
         default_factory=lambda: {
             "battery": True,
