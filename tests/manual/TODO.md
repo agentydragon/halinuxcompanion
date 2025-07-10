@@ -1,5 +1,14 @@
 # Manual Testing Framework TODO
 
+## Completed
+- [x] Robot Framework implementation
+- [x] Bluetooth test scenarios
+- [x] Battery test scenarios
+- [x] Test runner script
+- [x] Diagnostic collection
+- [x] Screenshot capture
+- [x] HA sensor data collection
+
 ## In Progress
 - [ ] Test the framework with actual Home Assistant instance
 
@@ -74,7 +83,8 @@
 
 ### Architecture Decisions
 - Using Robot Framework for flexibility and reporting
-- String enum for verification status (not bool | str)
-- Jinja2 for report templating
+- Python implementation kept in python_implementation/ for reference
+- Robot Framework provides better test reporting and manual interaction
+- Reuses Python HACompanionLibrary for complex operations
 - Docker optional but recommended for isolation
 - All diagnostics collected automatically

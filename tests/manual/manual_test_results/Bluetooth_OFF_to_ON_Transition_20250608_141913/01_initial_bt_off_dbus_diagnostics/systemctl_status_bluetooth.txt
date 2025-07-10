@@ -1,0 +1,25 @@
+Command: systemctl status bluetooth
+Return Code: 0
+
+● bluetooth.service - Bluetooth service
+     Loaded: loaded (/lib/systemd/system/bluetooth.service; enabled; vendor preset: enabled)
+     Active: active (running) since Sun 2025-06-08 07:35:15 PDT; 6h ago
+       Docs: man:bluetoothd(8)
+   Main PID: 1824 (bluetoothd)
+     Status: "Running"
+      Tasks: 1 (limit: 37981)
+     Memory: 2.3M
+        CPU: 175ms
+     CGroup: /system.slice/bluetooth.service
+             └─1824 /usr/lib/bluetooth/bluetoothd
+
+Jun 08 13:33:39 rai-thinkpad bluetoothd[1824]: Path / reserved for Adv Monitor app :1.967
+Jun 08 13:33:39 rai-thinkpad bluetoothd[1824]: Adv Monitor app :1.967 disconnected from D-Bus
+Jun 08 13:50:30 rai-thinkpad bluetoothd[1824]: Path / reserved for Adv Monitor app :1.1022
+Jun 08 13:50:30 rai-thinkpad bluetoothd[1824]: Adv Monitor app :1.1022 disconnected from D-Bus
+Jun 08 13:50:30 rai-thinkpad bluetoothd[1824]: Path / reserved for Adv Monitor app :1.1023
+Jun 08 13:50:30 rai-thinkpad bluetoothd[1824]: Adv Monitor app :1.1023 disconnected from D-Bus
+Jun 08 14:08:56 rai-thinkpad bluetoothd[1824]: Path / reserved for Adv Monitor app :1.1073
+Jun 08 14:08:56 rai-thinkpad bluetoothd[1824]: Adv Monitor app :1.1073 disconnected from D-Bus
+Jun 08 14:08:56 rai-thinkpad bluetoothd[1824]: Path / reserved for Adv Monitor app :1.1074
+Jun 08 14:08:56 rai-thinkpad bluetoothd[1824]: Adv Monitor app :1.1074 disconnected from D-Bus

@@ -1,0 +1,5 @@
+DBus Diagnostics Summary
+=======================
+Timestamp: 2025-06-08 12:41:43.831
+Directory: /home/agentydragon/syncthing/code/halinuxcompanion/tests/manual/manual_test_results/Bluetooth_OFF_to_ON_Transition_20250608_124143/01_initial_bt_off_dbus_diagnostics
+Commands executed: 6

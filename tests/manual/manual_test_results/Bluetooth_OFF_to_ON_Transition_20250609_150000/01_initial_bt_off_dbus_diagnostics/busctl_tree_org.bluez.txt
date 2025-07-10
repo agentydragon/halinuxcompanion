@@ -1,0 +1,28 @@
+Command: busctl tree org.bluez
+Return Code: 0
+
+└─/org
+  └─/org/bluez
+    └─/org/bluez/hci0
+      ├─/org/bluez/hci0/dev_78_2B_64_A1_0E_1E
+      └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59
+        ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/fd0
+        ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/sep1
+        ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service000c
+        │ ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service000c/char000d
+        │ │ └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service000c/char000d/desc000f
+        │ ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service000c/char0010
+        │ ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service000c/char0012
+        │ └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service000c/char0014
+        ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0016
+        │ ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0016/char0017
+        │ │ ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0016/char0017/desc0019
+        │ │ └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0016/char0017/desc001a
+        │ └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0016/char001b
+        │   └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0016/char001b/desc001d
+        ├─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service001e
+        │ └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service001e/char001f
+        │   └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service001e/char001f/desc0021
+        └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0022
+          └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0022/char0023
+            └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59/service0022/char0023/desc0025

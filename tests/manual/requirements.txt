@@ -1,9 +1,10 @@
 # Manual testing framework dependencies
 robotframework>=6.0
+robotframework-requests>=0.9
 docker>=6.0
 requests>=2.31
 types-requests>=2.31
 jinja2>=3.1
 click>=8.1
-types-click>=8.1
+types-click
 tenacity>=8.2

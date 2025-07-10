@@ -1,0 +1,82 @@
+2025-06-08 14:51:33,182 - keyring.backend - DEBUG - Loading KWallet
+2025-06-08 14:51:33,183 - keyring.backend - DEBUG - Loading SecretService
+2025-06-08 14:51:33,194 - keyring.backend - DEBUG - Loading Windows
+2025-06-08 14:51:33,194 - keyring.backend - DEBUG - Loading chainer
+2025-06-08 14:51:33,195 - keyring.backend - DEBUG - Loading libsecret
+2025-06-08 14:51:33,195 - keyring.backend - DEBUG - Loading macOS
+🚀 Starting Home Assistant Linux Companion...
+2025-06-08 14:51:33,277 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-08 14:51:33,295 - halinuxcompanion.__main__ - INFO - Starting with webhook ID: aacc79b6dd86cc662868f9b3abdd70c759dfac0bddf5cfe1816479f8af23a7d1
+2025-06-08 14:51:33,296 - halinuxcompanion.__main__ - INFO - Connected to system DBus
+2025-06-08 14:51:33,296 - halinuxcompanion.__main__ - INFO - Battery module enabled
+2025-06-08 14:51:33,296 - halinuxcompanion.__main__ - INFO - Bluetooth module enabled with 2 devices
+2025-06-08 14:51:33,499 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,509 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,510 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,511 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,517 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,518 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,546 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,557 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,557 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,562 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,564 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,574 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,574 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,578 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: register_sensor
+2025-06-08 14:51:33,578 - halinuxcompanion.api.client - INFO - Registered 14 sensors with Home Assistant
+2025-06-08 14:51:33,578 - halinuxcompanion.__main__ - INFO - Registered 14 sensors
+2025-06-08 14:51:33,578 - halinuxcompanion.modules.battery - DEBUG - Starting...
+2025-06-08 14:51:33,579 - halinuxcompanion.modules.bluetooth - DEBUG - Starting...
+2025-06-08 14:51:33,583 - halinuxcompanion.modules.battery - DEBUG - Initialized, calling update...
+2025-06-08 14:51:33,583 - halinuxcompanion.modules.battery - DEBUG - Updating battery state
+2025-06-08 14:51:33,585 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_connected = None (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,585 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_rssi = None (icon: None)
+2025-06-08 14:51:33,585 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,585 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_name = None (icon: None)
+2025-06-08 14:51:33,587 - halinuxcompanion.__main__ - DEBUG - Sensor update: battery_level = 96.0 (icon: mdi:battery-charging-90)
+2025-06-08 14:51:33,587 - halinuxcompanion.__main__ - DEBUG - Sensor update: battery_state = charging (icon: mdi:battery-charging)
+2025-06-08 14:51:33,587 - halinuxcompanion.__main__ - DEBUG - Sensor update: battery_power = -8.267 (icon: None)
+2025-06-08 14:51:33,588 - halinuxcompanion.__main__ - DEBUG - Sensor update: battery_time_to_empty = None (icon: None)
+2025-06-08 14:51:33,588 - halinuxcompanion.__main__ - DEBUG - Sensor update: battery_time_to_full = None (icon: None)
+2025-06-08 14:51:33,588 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_connected = None (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,588 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_rssi = None (icon: None)
+2025-06-08 14:51:33,588 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,588 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_name = None (icon: None)
+2025-06-08 14:51:33,588 - halinuxcompanion.modules.bluetooth - INFO - Found: 0C:9A:3C:6C:3C:33 at /org/bluez/hci0
+2025-06-08 14:51:33,590 - halinuxcompanion.modules.bluetooth - DEBUG - Updating Bluetooth state
+2025-06-08 14:51:33,590 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_enabled = True (icon: mdi:bluetooth)
+2025-06-08 14:51:33,591 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_connected = False (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,591 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_rssi = None (icon: None)
+2025-06-08 14:51:33,591 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,591 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_name = OpenRun Pro 2 by Shokz (icon: None)
+2025-06-08 14:51:33,591 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_connected = False (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,591 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_rssi = None (icon: None)
+2025-06-08 14:51:33,592 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,592 - halinuxcompanion.__main__ - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_name = Rai's QC45 (icon: None)
+2025-06-08 14:51:33,592 - halinuxcompanion.__main__ - INFO - All modules started
+2025-06-08 14:51:33,592 - halinuxcompanion.__main__ - INFO - Starting update sender
+2025-06-08 14:51:33,779 - halinuxcompanion.api.client - DEBUG - Webhook POST successful: update_sensor_states
+2025-06-08 14:51:33,779 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_connected = None (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,779 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_rssi = None (icon: None)
+2025-06-08 14:51:33,779 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_name = None (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: battery_level = 96.0 (icon: mdi:battery-charging-90)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: battery_state = charging (icon: mdi:battery-charging)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: battery_power = -8.267 (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: battery_time_to_empty = None (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: battery_time_to_full = None (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_connected = None (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_rssi = None (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_name = None (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_enabled = True (icon: mdi:bluetooth)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_connected = False (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_rssi = None (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_a8_f5_e1_77_2c_59_name = OpenRun Pro 2 by Shokz (icon: None)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_connected = False (icon: mdi:bluetooth-off)
+2025-06-08 14:51:33,780 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_rssi = None (icon: None)
+2025-06-08 14:51:33,781 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_battery = None (icon: mdi:battery-bluetooth-variant)
+2025-06-08 14:51:33,781 - halinuxcompanion.api.client - DEBUG - Sensor update: bluetooth_device_78_2b_64_a1_0e_1e_name = Rai's QC45 (icon: None)
+2025-06-08 14:51:33,781 - halinuxcompanion.api.client - INFO - Sent 22 sensor updates

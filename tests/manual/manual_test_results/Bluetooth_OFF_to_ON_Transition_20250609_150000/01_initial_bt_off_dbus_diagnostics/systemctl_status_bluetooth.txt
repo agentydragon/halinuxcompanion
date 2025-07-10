@@ -1,0 +1,25 @@
+Command: systemctl status bluetooth
+Return Code: 0
+
+● bluetooth.service - Bluetooth service
+     Loaded: loaded (/lib/systemd/system/bluetooth.service; enabled; vendor preset: enabled)
+     Active: active (running) since Sun 2025-06-08 07:35:15 PDT; 1 day 7h ago
+       Docs: man:bluetoothd(8)
+   Main PID: 1824 (bluetoothd)
+     Status: "Running"
+      Tasks: 1 (limit: 37981)
+     Memory: 2.5M
+        CPU: 290ms
+     CGroup: /system.slice/bluetooth.service
+             └─1824 /usr/lib/bluetooth/bluetoothd
+
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSource/aptx_ll_duplex_1
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSource/aptx_ll_duplex_0
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSource/faststream
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSource/faststream_duplex
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSink/opus_05
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSource/opus_05
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSink/opus_05_duplex
+Jun 09 14:00:38 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.1670 path=/MediaEndpoint/A2DPSource/opus_05_duplex
+Jun 09 14:48:34 rai-thinkpad bluetoothd[1824]: src/gatt-client.c:btd_gatt_client_eatt_connect() EATT bt_io_connect(A8:F5:E1:77:2C:59): connect to A8:F5:E1:77:2C:59: Invalid argument (22)
+Jun 09 14:51:51 rai-thinkpad bluetoothd[1824]: /org/bluez/hci0/dev_A8_F5_E1_77_2C_59/fd0: fd(42) ready

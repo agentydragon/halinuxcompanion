@@ -1,0 +1,4 @@
+Command: bluetoothctl devices
+Return Code: 0
+
+No default controller available

@@ -1,0 +1,8 @@
+Command: busctl tree org.bluez
+Return Code: 0
+
+└─/org
+  └─/org/bluez
+    └─/org/bluez/hci0
+      ├─/org/bluez/hci0/dev_78_2B_64_A1_0E_1E
+      └─/org/bluez/hci0/dev_A8_F5_E1_77_2C_59

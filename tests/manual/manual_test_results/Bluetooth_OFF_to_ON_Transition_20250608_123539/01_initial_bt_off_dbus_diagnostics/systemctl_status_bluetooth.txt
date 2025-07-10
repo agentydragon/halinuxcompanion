@@ -1,0 +1,25 @@
+Command: systemctl status bluetooth
+Return Code: 0
+
+● bluetooth.service - Bluetooth service
+     Loaded: loaded (/lib/systemd/system/bluetooth.service; enabled; vendor preset: enabled)
+     Active: active (running) since Sun 2025-06-08 07:35:15 PDT; 5h 0min ago
+       Docs: man:bluetoothd(8)
+   Main PID: 1824 (bluetoothd)
+     Status: "Running"
+      Tasks: 1 (limit: 37981)
+     Memory: 2.3M
+        CPU: 159ms
+     CGroup: /system.slice/bluetooth.service
+             └─1824 /usr/lib/bluetooth/bluetoothd
+
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/aptx_ll_1
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/aptx_ll_0
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/aptx_ll_duplex_1
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/aptx_ll_duplex_0
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/faststream
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/faststream_duplex
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSink/opus_05
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/opus_05
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSink/opus_05_duplex
+Jun 08 11:33:48 rai-thinkpad bluetoothd[1824]: Endpoint registered: sender=:1.758 path=/MediaEndpoint/A2DPSource/opus_05_duplex

@@ -1,0 +1,13 @@
+{
+  "test_name": "Bluetooth OFF to ON Transition",
+  "start_time": "20250608_040951",
+  "end_time": "2025-06-08 04:09:51.179",
+  "results_dir": "/home/agentydragon/syncthing/code/halinuxcompanion/tests/manual/manual_test_results/Bluetooth_OFF_to_ON_Transition_20250608_040951",
+  "results": [
+    {
+      "verified": "passed",
+      "timestamp": "2025-06-08 04:09:51.064",
+      "description": "Initial state: Bluetooth OFF"
+    }
+  ]
+}

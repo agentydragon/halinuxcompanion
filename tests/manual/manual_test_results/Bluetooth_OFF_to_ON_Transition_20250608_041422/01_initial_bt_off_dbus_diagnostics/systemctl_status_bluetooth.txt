@@ -1,0 +1,22 @@
+● bluetooth.service - Bluetooth service
+     Loaded: loaded (/lib/systemd/system/bluetooth.service; enabled; vendor preset: enabled)
+     Active: active (running) since Tue 2025-06-03 11:55:18 PDT; 4 days ago
+       Docs: man:bluetoothd(8)
+   Main PID: 1258 (bluetoothd)
+     Status: "Running"
+      Tasks: 1 (limit: 37981)
+     Memory: 2.5M
+        CPU: 1min 28.973s
+     CGroup: /system.slice/bluetooth.service
+             └─1258 /usr/lib/bluetooth/bluetoothd
+
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSource/aptx_ll_duplex_1
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSource/aptx_ll_duplex_0
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSource/faststream
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSource/faststream_duplex
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSink/opus_05
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSource/opus_05
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSink/opus_05_duplex
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Endpoint unregistered: sender=:1.6825 path=/MediaEndpoint/A2DPSource/opus_05_duplex
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Destroy Adv Monitor Manager
+Jun 08 03:52:57 rai-thinkpad bluetoothd[1258]: Battery Provider Manager destroyed

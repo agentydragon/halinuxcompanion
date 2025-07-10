@@ -31,7 +31,6 @@
 - [ ] DESIGN.md reflects current architecture
 - [ ] SPEC.md matches implementation
 - [ ] CLAUDE.md has current development guidelines
-- [ ] Docstrings are complete and accurate
 - [ ] Configuration options are documented
 - [ ] Installation instructions are clear
 

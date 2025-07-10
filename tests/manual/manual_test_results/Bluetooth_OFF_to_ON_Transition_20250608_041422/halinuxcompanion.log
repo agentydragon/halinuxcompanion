@@ -1,0 +1,4 @@
+Usage: halinuxcompanion run [OPTIONS]
+Try 'halinuxcompanion run --help' for help.
+
+Error: No such option: --debug

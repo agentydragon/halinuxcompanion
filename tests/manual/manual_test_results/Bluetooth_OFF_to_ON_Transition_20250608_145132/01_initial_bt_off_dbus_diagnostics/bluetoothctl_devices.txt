@@ -1,0 +1,5 @@
+Command: bluetoothctl devices
+Return Code: 0
+
+Device A8:F5:E1:77:2C:59 OpenRun Pro 2 by Shokz
+Device 78:2B:64:A1:0E:1E Rai's QC45

@@ -1,0 +1,20 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant-test
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./ha_test_config.yaml:/config/configuration.yaml:ro
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /config/.storage
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/api/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
